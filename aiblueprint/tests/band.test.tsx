@@ -231,3 +231,22 @@ test('skills : la liste arrive dans le prompt système et se met à jour quand u
   await clock.advance(11 * 60_000)
   expect(await rules()).toContain('- Jeux: roblox-debugging')
 })
+
+test('terminal : économie affichée en 4.1K avec sa case, styles de jauge', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept: Record<string, unknown> = { ecoSessions: { [String(NOW - 7_200_000)]: 6150 } }
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('session.usage', () => ({ value: { ...USAGE, startedAt: NOW - 7_200_000 } }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+  const ui = await mountBand($, 'terminal')
+  expect(await ui.find({ type: 'Text', text: /~4\.1K/ })).toBeDefined() // 6150 écrits ≈ 4100 économisés
+  expect((await ui.find({ type: 'Button', key: 'eco-toggle' }))?.text).toContain('☑')
+  await ui.press({ key: 'gear' })
+  for (const g of ['segments', 'ring', 'none', 'line']) await ui.press({ key: `gauge-${g}` })
+  expect((kept.prefs as { gauge: string }).gauge).toBe('line')
+  await ui.unmount()
+})

@@ -49,7 +49,8 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Temps estimé** qui s'écoule pour chaque action en cours, appris à partir des durées réelles et gardé d'une session à l'autre.
 - **Détail au clic** : fichier et lignes, motif et dossier de recherche, page ou requête web, commande lancée, aperçu des modifications (−/+), fin du résultat.
 - **Temps total** en haut de la carte Actions : le temps restant pour tout pendant le travail, puis le temps passé (✓) une fois fini. Chaque catégorie garde son ✓ et son temps.
-- **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
+- **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec, ■ arrêtée (bouton stop).
+- **Bouton stop** : si tu arrêtes une commande, l'action finit « arrêtée », le minuteur s'arrête et le panneau reste ouvert (il revient tout seul s'il a été fermé). Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
 - **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre le fichier dans **sa propre fenêtre d'éditeur** (une par fichier, autant que tu veux) :

@@ -337,7 +337,8 @@ const toggle = (list: string[], key: string) => (list.includes(key) ? list.filte
 // Le panneau (à droite) s'ouvre dès la première demande (un mod chargé en cours de session ne voit pas session.start).
 let isOpened = false
 async function ensureOpen($: EngineInterface, isAsked = false) {
-  if (isOpened && !isAsked) return
+  // Déjà ouvert ? On vérifie qu'il l'est vraiment (un arrêt de commande ou l'app a pu le fermer).
+  if (isOpened && !isAsked && (await $.ui.panes().catch(() => [])).some(x => x.id === PANE)) return
   isOpened = true
   const saved = (await $.store.get('prefs')) as Partial<Prefs> | undefined
   const p = await update($, prefs, x => ({ ...x, ...saved }))
@@ -359,8 +360,26 @@ async function setPrefs($: EngineInterface, fn: (p: Prefs) => Prefs) {
   await $.ui.open({ id: PANE, title: 'Progress', columns: p.width })
 }
 
+// Arrête des actions en cours (toutes si ids absent) : terminées « arrêtées », le minuteur s'arrête s'il n'y a plus rien.
+let ticker: Timer | undefined
+async function stopRunning($: EngineInterface, ids?: string[]) {
+  const endedAt = await $.clock.now()
+  const list = await update($, calls, l => l.map(c =>
+    c.endedAt === undefined && (!ids || ids.includes(c.id)) ? { ...c, endedAt, failed: true, stopped: true } : c))
+  if (!list.some(c => c.endedAt === undefined)) {
+    ticker?.cancel()
+    ticker = undefined
+  }
+}
+
 export const register: Register = on => {
-  let ticker: Timer | undefined
+  // Réponse interrompue (bouton stop) : ce qui tournait encore est marqué arrêté, le panneau reste.
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    if (e.isAborted) await stopRunning($)
+    void ensureOpen($).catch(() => {}) // en arrière-plan : ne retarde rien
+    return done
+  })
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'progress', description: 'Ouvrir le panneau Progress à droite' })
@@ -380,12 +399,12 @@ export const register: Register = on => {
 
   // Toute commande (/...) fait aussi apparaître la carte.
   on('command.run', async ($, e, next) => {
-    await ensureOpen($).catch(() => {}) // ne bloque jamais outils ni messages
+    void ensureOpen($).catch(() => {}) // en arrière-plan : ne retarde jamais la commande
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
-    await ensureOpen($).catch(() => {}) // ne bloque jamais outils ni messages
+    void ensureOpen($).catch(() => {}) // en arrière-plan : ne retarde jamais ton message
     // Rappels automatiques (tâches de fond, déclencheurs, autres sessions) : pas une nouvelle demande.
     if (!['composer', 'bridge', 'sdk'].includes(e.origin.kind)) return next(e)
     // Nouvelle demande : on repart de zéro (on garde seulement ce qui tourne encore).
@@ -434,7 +453,14 @@ export const register: Register = on => {
     await update($, calls, list => [...list, call].slice(-300))
     ticker ??= $.clock.every(1000, () => void $.clock.now().then(t => update($, now, () => t)))
 
-    const ran = await next(e)
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } catch (err) {
+      // Commande stoppée (ou erreur) : l'action se termine « arrêtée » au lieu de tourner pour toujours.
+      await stopRunning($, [call.id])
+      throw err
+    }
 
     const endedAt = await $.clock.now()
     const tail = resultTail((ran as { result?: unknown }).result)
@@ -674,10 +700,11 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     const isDone = c.endedAt !== undefined
     const isDetail = v.opened.includes(c.id)
     // ✓ validée · ✕ échec · ● en cours · ○ en attente
-    const mark = c.failed ? '✕' : isDone ? '✓' : isNow ? '●' : '○'
+    const mark = c.stopped ? '■' : c.failed ? '✕' : isDone ? '✓' : isNow ? '●' : '○'
     const markColor = c.failed ? RED : isDone ? CHECK : isNow ? ACCENT : 'gray'
     // Le temps ne s'affiche que pendant que l'action tourne ; finie, il ne reste que le ✓.
-    const time = c.failed ? <Text size="footnote" color={RED}>échec</Text>
+    const time = c.stopped ? <Text size="footnote" color={RED}>arrêtée</Text>
+      : c.failed ? <Text size="footnote" color={RED}>échec</Text>
       : isNow && !isDone ? <Text size="footnote" color={TIME} tabular>{fmt(left(c))}</Text>
       : false
     return (

@@ -8,6 +8,7 @@ export type Call = {
   startedAt: number
   endedAt?: number
   failed?: boolean
+  stopped?: boolean // arrêtée par l'utilisateur (bouton stop)
 }
 
 export type Step = { title: string; status: 'pending' | 'in_progress' | 'completed' }

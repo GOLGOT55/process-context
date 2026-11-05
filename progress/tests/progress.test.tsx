@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { guardCheck } from '../hooks/register.js'
 
@@ -12,6 +12,8 @@ const PANE = {
 const opened: unknown[] = []
 // false = l'app refuse les fenêtres à part (seul Progress s'affiche).
 let placed = true
+// true = l'app a fermé les panneaux (ex. après un arrêt).
+let closedAll = false
 const stored: Record<string, unknown> = {}
 const engine = (on: any) => {
   on('command.register', () => ({ value: { command: 'progress' } }))
@@ -23,6 +25,9 @@ const engine = (on: any) => {
   on('clock.now', () => ({ value: 1000 }))
   on('clock.every', () => ({ value: undefined }))
   on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: { isPlaced: e.id === 'progress' || placed } } })
+  // Panneaux ouverts (vides tant que rien n'est ouvert ; closedAll simule l'app qui ferme tout).
+  on('ui.panes', () => ({ value: closedAll ? [] : opened.map(o => ({ id: (o as { id: string }).id, title: '', isShown: true, isFocused: false, isPlaced: true })) }))
+  on('turn.complete', () => ({ text: '' }))
 }
 
 test('le panneau à droite suit les actions et se personnalise', async ($, on) => {
@@ -298,4 +303,54 @@ test('⚙ Catégories : masquer une catégorie, puis la remettre', async ($, on)
   await ui.press({ key: 'cat-show:Lecture' })
   expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeDefined()
   await ui.unmount()
+})
+
+test('commande stoppée : l’action finit « arrêtée », le minuteur s’arrête, le panneau reste ou revient', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  opened.length = 0
+  closedAll = false
+  on('tool.call', { tool: 'Bash' }, () => { throw new Error('interrompu') })
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+  await $.tool.call({ tool: 'Bash', command: 'npm run long', description: 'Longue commande' }).catch(() => {})
+  await $.turn.complete({ answer: '', reason: 'aborted', durationMs: 1, isAborted: true, turnId: 't' } as never)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'cat:Commandes' })
+  expect((await ui.find({ type: 'Button', text: /Longue commande/ }))?.text).toContain('■')
+  expect(await ui.find({ type: 'Text', text: /^arrêtée$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /en cours/ })).toBeUndefined()
+  await ui.unmount()
+
+  // L'app a fermé le panneau : la prochaine demande le rouvre.
+  const before = opened.filter(o => (o as { id: string }).id === 'progress').length
+  closedAll = true
+  await $.prompt.submit({ text: 'encore', wait: false, origin: { kind: 'composer' } })
+  closedAll = false
+  expect(opened.filter(o => (o as { id: string }).id === 'progress').length).toBe(before + 1)
+})
+
+test('ouverture dès le début de la session (sans attendre une demande) et commande /progress', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const ids: string[] = []
+  let attached = false // l'écran de l'app s'attache un peu après le démarrage
+  on('command.register', () => ({ value: { command: 'progress' } }))
+  on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('store.get', () => ({ value: undefined }))
+  on('ui.panes', () => ({ value: attached ? ids.map(id => ({ id, title: '', isShown: true, isFocused: false, isPlaced: true })) : [] }))
+  on('ui.open', (_: unknown, e: { id: string }) => { if (attached) ids.push(e.id); return { value: attached ? { isPlaced: true } : { isPlaced: false, reason: 'no-surface' } } })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  await clock.advance(2_100) // pas encore d'écran : il réessaie
+  expect(ids.length).toBe(0)
+  attached = true
+  await clock.advance(2_100) // écran prêt : le panneau s'ouvre tout seul
+  expect(ids).toEqual(['progress'])
+  await clock.advance(10_000) // ouvert : il arrête de réessayer
+  expect(ids.length).toBe(1)
+
+  const r = await $.command.run({ command: 'progress', args: '' } as never)
+  expect((r as { text: string }).text).toContain('Progress')
+  expect(ids.length).toBe(2)
 })
