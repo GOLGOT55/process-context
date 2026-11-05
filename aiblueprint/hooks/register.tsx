@@ -230,7 +230,7 @@ function compute(raw: SessionUsage, now: number): Usage {
   const usage = raw.rateLimits.length > 0 || !lastLimits?.length ? raw : { ...raw, rateLimits: lastLimits }
   return {
     cost: usage.cost?.usd ?? 0,
-    context: contextOf(usage),
+    context: contextOf(usage) ?? { percent: 0, tokens: 0, window: usage.context.window },
     session: limitOf(usage, 'five_hour', SESSION_MS, now),
     week: limitOf(usage, 'seven_day', WEEK_MS, now),
     ...(usage.startedAt ? { durationMs: Math.max(0, now - usage.startedAt) } : {}),
@@ -416,13 +416,15 @@ export const register: Register = (on, rawOptions) => {
     const prefs = storedPrefs ?? base
     const accent = prefs.accent
     const isCompact = prefs.density === 'compact'
+    // Pas encore de valeur (début de session, remise à zéro) : on affiche 0 % au lieu de cacher.
+    const ZERO: Limit = { percent: 0 }
     const hasLimits = usage.session !== undefined || usage.week !== undefined
 
     const limits = [
-      { key: 'five-hour', label: fiveHourLabel, limit: prefs.showFiveHour ? usage.session : undefined },
-      { key: 'week', label: weekLabel, limit: prefs.showWeek ? usage.week : undefined },
+      { key: 'five-hour', label: fiveHourLabel, limit: prefs.showFiveHour ? usage.session ?? ZERO : undefined },
+      { key: 'week', label: weekLabel, limit: prefs.showWeek ? usage.week ?? ZERO : undefined },
     ].filter((item): item is { key: string; label: string; limit: Limit } => item.limit !== undefined)
-    const context = prefs.showContext ? usage.context : undefined
+    const context = prefs.showContext ? usage.context ?? { percent: 0, tokens: 0, window: 0 } : undefined
 
     const { Box, Text, Button } = $.ui.resolve(e)
     const set = <K extends keyof Prefs>(field: K, value: Prefs[K]) => savePrefs($, prefs => ({ ...prefs, [field]: value }), base)

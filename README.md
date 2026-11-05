@@ -62,7 +62,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
   - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`.
 
   Seules les vraies commandes comptent : un texte qui contient juste ces mots (un message, un test) ne déclenche rien. Effacer tout un disque ou le formater est refusé d'office. La carte « Garde-fou » liste chaque commande avec ✓ autorisée, ✕ refusée ou ⛔ bloquée, l'heure, et la commande au clic.
-- **Catégories fermées par défaut** : on n'y voit que l'action en cours, avec son temps qui défile ; une fois finie, elle se range et il ne reste que la catégorie avec son ✓. Clic sur ▸ pour tout voir, ▾ pour refermer. Œil ◉ pour réduire le panneau.
+- **Catégories fermées par défaut** : on n'y voit que l'action en cours, avec son temps qui défile ; une fois finie, elle reste avec son ✓ (sans les secondes) jusqu'à la suivante. Clic sur ▸ pour tout voir, ▾ pour refermer. Œil ◉ pour réduire le panneau.
 
 ### Personnaliser
 
@@ -84,6 +84,7 @@ Les réglages sont gardés pour toutes les sessions.
 - **Coût & temps** : coût de la session et depuis combien de temps elle tourne.
 - **Alerte 80 %** : une notification (une seule fois par fenêtre) et un ⚠ quand la limite 5 h dépasse 80 %.
 - 5 h et semaine s'affichent dès l'ouverture d'une conversation : les dernières valeurs connues sont gardées jusqu'à la première réponse.
+- Rien à zéro n'est caché : contexte, 5 h et semaine s'affichent toujours, à 0 % s'il n'y a pas encore de valeur.
 - Bouton **⚙** pour choisir ce qui s'affiche, le style de jauge, la couleur, la taille et le fond.
 - Options aussi réglables dans les paramètres de Claude Code (`pluginConfigs`).
 

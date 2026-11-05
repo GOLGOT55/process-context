@@ -700,8 +700,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
             p.showTimes && <Text size="footnote" color={active.length ? TIME : CHECK} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
           )}
           {/* Étape par étape, dans l'ordre où Claude les lance. */}
-          {/* Fermée : seulement l'action en cours (temps qui défile), elle disparaît une fois finie. */}
-          {(isOpen ? items : active).map(c => row(c, c === first))}
+          {/* Fermée : l'action en cours (temps qui défile) ; sinon la dernière finie, avec son ✓. */}
+          {(isOpen ? items : active.length ? active : done.slice(-1)).map(c => row(c, c === first))}
         </Box>
       )
     }),

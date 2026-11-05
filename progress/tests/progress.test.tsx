@@ -81,18 +81,20 @@ test('chaque étape finie est cochée, une nouvelle demande vide l’historique'
 
 // shortcut: le cas « action en cours visible dans une catégorie fermée » n'est pas testé ici :
 // l'outil de test attend la fin de l'appel avant d'afficher ; à vérifier dans l'app.
-test('catégorie fermée : actions finies cachées, la catégorie et son ✓ restent', async ($, on) => {
+test('catégorie fermée : seule la dernière action finie reste, avec son ✓', async ($, on) => {
   for (const k in stored) delete stored[k]
   engine(on)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+  await $.tool.call({ tool: 'Bash', command: 'npm install', description: 'Installe' })
   await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Lance les tests' })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Button', text: /Commandes/ })).toBeDefined()
-  expect(await ui.find({ type: 'Button', text: /Lance les tests/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', text: /Lance les tests/ }))?.text).toContain('✓')
+  expect(await ui.find({ type: 'Button', text: /Installe/ })).toBeUndefined()
   await ui.press({ key: 'cat:Commandes' })
-  expect(await ui.find({ type: 'Button', text: /Lance les tests/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /Installe/ })).toBeDefined()
   await ui.unmount()
 })
 

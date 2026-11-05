@@ -102,3 +102,16 @@ test('coût et durée de la session, et alerte unique quand la limite 5h passe 8
   expect(toasts.length).toBe(1)
   expect(toasts[0]).toContain('85')
 })
+
+test('rien de mesuré encore : Contexte, 5h et Semaine affichés à 0 %', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('fs.write', () => undefined)
+  on('store.get', () => ({ value: undefined }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
+  on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 1_000_000 }, rateLimits: [] } }) as never)
+  const ui = await mountBand($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /^5h ?$/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Semaine ?$/i })).toBeDefined()
+  expect((await ui.findAll({ type: 'Text', text: /^0%$/ })).length).toBeGreaterThanOrEqual(3)
+  await ui.unmount()
+})
