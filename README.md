@@ -1,4 +1,4 @@
-# process-context
+# Radar
 
 Deux mods pour **Claude Code** qui montrent ce qui se passe pendant une session :
 
