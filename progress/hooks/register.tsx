@@ -572,12 +572,13 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const barWidth = Math.max(80, Math.min(220, (e.props.bodyColumns ?? 40) * 5))
 
   const style = p.gauge ?? 'Ligne'
-  const gauge = (key: string, ratio: number) => {
+  // Jauge ; w = largeur (petite quand elle est à droite d'un titre).
+  const gauge = (key: string, ratio: number, w = barWidth) => {
     const pct = `${Math.round(clamp01(ratio) * 100)}%`
     if (style === 'Aucune') return false
     if (isTerminal || !Svg) return <Text key={key} color={ACCENT} dimColor>{gaugeText(ratio, style)}{style === 'Anneau' ? ' ' + pct : ''}</Text>
     if (style === 'Segments') {
-      const s = segmentsSvg(ratio, ACCENT, Math.max(6, Math.floor((barWidth + 2.5) / 8.5)))
+      const s = segmentsSvg(ratio, ACCENT, Math.max(6, Math.floor((w + 2.5) / 8.5)))
       return <Svg key={key} source={s.svg} alt={pct} width={s.width} height={s.height} />
     }
     if (style === 'Anneau') return (
@@ -586,8 +587,10 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text size="footnote" dimColor tabular>{pct}</Text>
       </Box>
     )
-    return <Svg key={key} source={lineSvg(ratio, ACCENT, barWidth)} alt={pct} width={barWidth} height={10} />
+    return <Svg key={key} source={lineSvg(ratio, ACCENT, w)} alt={pct} width={w} height={10} />
   }
+  const TITLE_W = 64 // jauge à droite d'un titre : visible même carte réduite
+  const runRatio = 1 - total / Math.max(1, running.reduce((s, c) => s + c.estMs, 0))
 
   const bg = p.background in BACKGROUNDS ? BACKGROUNDS[p.background] : BACKGROUNDS.Carte!
   const card = (key: string, children: RenderChildren) => (
@@ -630,13 +633,12 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
       <Box flexDirection="column" gap={0}>
         {caption('cap', 'Progress')}
         {running.length > 0
-          ? <Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · <Text color={TIME}>~{fmt(total)}</Text></Text>
+          ? <Box flexDirection="row" alignItems="center" gap="sm"><Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · <Text color={TIME}>~{fmt(total)}</Text></Text>{gauge('g-total', runRatio, TITLE_W)}</Box>
           : <Text weight="semibold">{list.length ? `Terminé · ${list.length} action${list.length > 1 ? 's' : ''}` : 'Prêt'}</Text>}
         {list.length > 0 && tally}
       </Box>
       {buttons}
     </Box>,
-    running.length > 0 && gauge('g-total', 1 - total / Math.max(1, running.reduce((s, c) => s + c.estMs, 0))),
   ])
 
   // ----- Réglages : uniquement des boutons, pareil sur toutes les surfaces -----
@@ -697,10 +699,9 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const doneSteps = steps.filter(s => s.status === 'completed').length
   const planCard = p.showPlan && steps.length > 0 && card('plan', [
     <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
-      {fold('plan', 'Plan')}
+      <Box flexDirection="row" alignItems="center" gap="sm">{fold('plan', 'Plan')}{gauge('g-plan', doneSteps / steps.length, TITLE_W)}</Box>
       <Text size="footnote" dimColor tabular>{doneSteps}/{steps.length}</Text>
     </Box>,
-    !isClosed('plan') && gauge('g-plan', doneSteps / steps.length),
     ...(isClosed('plan') ? [] : steps).map((s, i) => (
       <Text key={'step' + i} wrap="truncate-end">
         <Text color={s.status === 'completed' ? CHECK : s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status === 'pending'}>{s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}</Text>
@@ -745,11 +746,9 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   // Temps total de toutes les actions : restant pendant le travail, passé une fois tout fini.
   const spent = shown.reduce((s, c) => s + (c.endedAt !== undefined ? c.endedAt - c.startedAt : 0), 0)
   const actionsCard = card('actions', [
-    line('cap', fold('actions', 'Actions'), p.showTimes && shown.length > 0 && (running.length
+    line('cap', <Box flexDirection="row" alignItems="center" gap="sm">{fold('actions', 'Actions')}{running.length > 0 && gauge('g-actions', runRatio, TITLE_W)}</Box>, p.showTimes && shown.length > 0 && (running.length
       ? <Text size="footnote" weight="semibold" color={TIME} tabular>~{fmt(total)}</Text>
       : <Text size="footnote" weight="semibold" color={CHECK} tabular>✓ {fmt(spent)}</Text>)),
-    // Jauge sur le titre Actions seulement (pas sur chaque sous-action).
-    running.length > 0 && gauge('g-actions', 1 - total / Math.max(1, running.reduce((s, c) => s + c.estMs, 0))),
     !isClosed('actions') && shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
     ...(isClosed('actions') ? [] : groups).map(({ cat, items }) => {
       const active = items.filter(c => c.endedAt === undefined)

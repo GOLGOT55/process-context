@@ -71,7 +71,7 @@ Bouton **⚙** (masqué par défaut, **Masquer** pour le refermer) :
 
 - Couleur : bleu, vert, violet, orange, rose, gris
 - Couleur des validations ✓ et couleur des temps
-- Jauge : ligne, segments, anneau ou aucune
+- Jauge : ligne, segments, anneau ou aucune ; elle se place à droite des titres (résumé, Plan, Actions), donc reste visible quand la carte est réduite
 - Fond : carte, noir, ardoise, transparent
 - Largeur : étroite, normale, large
 - Afficher ou non : résumé, plan, historique, temps, fichiers

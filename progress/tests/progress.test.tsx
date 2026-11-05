@@ -418,3 +418,16 @@ test('chaque réglage de ⚙ : appliqué, gardé, et l’affichage ne casse pas'
     await ui.unmount()
   }
 })
+
+test('jauge à droite du titre Plan : toujours visible quand la carte est réduite', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items: [{ content: 'Un', status: 'completed' }, { content: 'Deux', status: 'pending' }] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.findAll({ type: 'Svg' })).length).toBeGreaterThan(0)
+  await ui.press({ key: 'fold:plan' })
+  expect(await ui.find({ type: 'Text', text: /Deux/ })).toBeUndefined() // étapes cachées
+  expect((await ui.findAll({ type: 'Svg' })).length).toBeGreaterThan(0) // jauge toujours là
+  await ui.unmount()
+})
