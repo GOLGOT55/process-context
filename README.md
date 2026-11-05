@@ -47,7 +47,8 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Catégories** : Lecture, Recherche, Web, Modifications, Commandes, Agents, Autre.
 - **Temps estimé** qui s'écoule pour chaque action en cours, appris à partir des durées réelles et gardé d'une session à l'autre.
 - **Détail au clic** : fichier et lignes, motif et dossier de recherche, page ou requête web, commande lancée, aperçu des modifications (−/+), fin du résultat.
-- **Étape par étape** : chaque action a son état, ✓ validée (vert), ● en cours, ○ en attente, ✕ échec (rouge), avec sa durée réelle une fois finie, et un bilan en haut (« ✓ 5 validées · ● 1 en cours »).
+- **Temps total** en haut de la carte Actions : le temps restant pour tout pendant le travail, puis le temps passé (✓) une fois fini. Chaque catégorie garde son ✓ et son temps.
+- **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
 - Flèches ▸/▾ pour replier, œil ◉ pour réduire le panneau.
@@ -57,6 +58,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 Bouton **⚙** (masqué par défaut, **Masquer** pour le refermer) :
 
 - Couleur : bleu, vert, violet, orange, rose, gris
+- Couleur des validations ✓ et couleur des temps
 - Fond : carte, noir, ardoise, transparent
 - Largeur : étroite, normale, large
 - Afficher ou non : résumé, plan, historique, temps

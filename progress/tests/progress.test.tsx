@@ -73,3 +73,23 @@ test('chaque étape finie est cochée, une nouvelle demande vide l’historique'
   expect(await fresh.find({ type: 'Text', text: /Rien pour l'instant/ })).toBeDefined()
   await fresh.unmount()
 })
+
+test('sous-actions finies : ✓ sans temps ; total sur Actions ; couleurs des ✓ et du temps', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
+  await $.tool.call({ tool: 'Read', file_path: '/src/c.ts' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Button', text: /c\.ts/ }))?.text).toContain('✓')
+  // Durée seulement sur le total (Actions) et la catégorie, pas sur la sous-action.
+  const times = await ui.findAll({ type: 'Text', text: /^✓ \d+s$/ })
+  expect(times.length).toBe(2)
+  await ui.press({ key: 'gear' })
+  await ui.press({ key: 'check:Rose' })
+  expect((stored.prefs as { checkColor: string }).checkColor).toBe('#f472b6')
+  await ui.press({ key: 'time:Blanc' })
+  expect((stored.prefs as { timeColor: string }).timeColor).toBe('#e5e7eb')
+  await ui.unmount()
+})

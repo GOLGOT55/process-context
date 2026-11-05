@@ -268,6 +268,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const Svg = 'Svg' in els ? els.Svg : undefined // pas de Svg dans le terminal
   const [list, steps, v, t, p] = [await read($, calls), await read($, plan), await read($, view), await read($, now), await read($, prefs)]
   const ACCENT = p.accent
+  const CHECK = p.checkColor ?? GREEN // couleur des ✓ validées
+  const TIME = p.timeColor ?? ACCENT // couleur des temps qui défilent
   const isTerminal = e.surface === 'terminal'
   const set = (fn: (v: View) => View) => void update($, view, fn)
   const pick = (fn: (p: Prefs) => Prefs) => void setPrefs($, fn)
@@ -302,7 +304,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const ko = list.filter(c => c.failed).length
   const tally = (
     <Box key="tally" flexDirection="row" gap="sm">
-      {ok > 0 && <Text size="footnote" color={GREEN} tabular>✓ {ok} validée{ok > 1 ? 's' : ''}</Text>}
+      {ok > 0 && <Text size="footnote" color={CHECK} tabular>✓ {ok} validée{ok > 1 ? 's' : ''}</Text>}
       {running.length > 0 && <Text size="footnote" color={ACCENT} tabular>● {running.length} en cours</Text>}
       {ko > 0 && <Text size="footnote" color={RED} tabular>✕ {ko} échec{ko > 1 ? 's' : ''}</Text>}
     </Box>
@@ -321,7 +323,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
       <Box flexDirection="column" gap={0}>
         {caption('cap', 'Progress')}
         {running.length > 0
-          ? <Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · ~{fmt(total)}</Text>
+          ? <Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · <Text color={TIME}>~{fmt(total)}</Text></Text>
           : <Text weight="semibold">{list.length ? `Terminé · ${list.length} action${list.length > 1 ? 's' : ''}` : 'Prêt'}</Text>}
         {list.length > 0 && tally}
       </Box>
@@ -340,12 +342,14 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
       <Box flexDirection="row" alignItems="center" gap={1} flexWrap="wrap">{children}</Box>
     </Box>
   )
-  const swatches = Object.entries(COLORS).map(([name, c]) => (
-    <Button key={'color:' + name} label={`${p.accent === c ? '◉' : '●'} ${name}`} variant={p.accent === c ? 'primary' : 'secondary'} onPress={() => pick(x => ({ ...x, accent: c }))}>
-      <Text color={c}>{p.accent === c ? '◉' : '●'}</Text>
-      <Text dimColor={p.accent !== c}> {name}</Text>
-    </Button>
-  ))
+  // Pastilles de couleur pour un réglage (couleur principale, ✓, temps).
+  const swatches = (prefix: string, current: string, choose: (c: string) => (x: Prefs) => Prefs, palette = COLORS) =>
+    Object.entries(palette).map(([name, c]) => (
+      <Button key={prefix + ':' + name} label={`${current === c ? '◉' : '●'} ${name}`} variant={current === c ? 'primary' : 'secondary'} onPress={() => pick(choose(c))}>
+        <Text color={c}>{current === c ? '◉' : '●'}</Text>
+        <Text dimColor={current !== c}> {name}</Text>
+      </Button>
+    ))
   const toggleChip = (key: 'showSummary' | 'showPlan' | 'showHistory' | 'showTimes', label: string) => {
     const isOn = p[key] !== false
     return chip('opt:' + key, `${isOn ? '✓' : '+'} ${label}`, isOn, () => pick(x => ({ ...x, [key]: x[key] === false })))
@@ -358,7 +362,9 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         <Button key="close-settings" label="Masquer" plain dimColor onPress={() => set(x => ({ ...x, settings: false }))} />
       </Box>
     </Box>,
-    section('s-color', 'Couleur', swatches),
+    section('s-color', 'Couleur', swatches('color', p.accent, c => x => ({ ...x, accent: c }))),
+    section('s-check', 'Validations ✓', swatches('check', CHECK, c => x => ({ ...x, checkColor: c }), { Vert: GREEN, ...COLORS })),
+    section('s-time', 'Temps', swatches('time', TIME, c => x => ({ ...x, timeColor: c }), { Blanc: '#e5e7eb', ...COLORS })),
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
     section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps')]),
@@ -375,7 +381,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     gauge('g-plan', doneSteps / steps.length),
     ...steps.map((s, i) => (
       <Text key={'step' + i} wrap="truncate-end">
-        <Text color={s.status === 'completed' ? GREEN : s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status === 'pending'}>{s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}</Text>
+        <Text color={s.status === 'completed' ? CHECK : s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status === 'pending'}>{s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}</Text>
         <Text color={s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status !== 'in_progress'}>  {s.title}</Text>
       </Text>
     )),
@@ -385,17 +391,20 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const row = (c: Call, isNow: boolean) => {
     const isDone = c.endedAt !== undefined
     const isDetail = v.opened.includes(c.id)
-    const time = isDone ? fmt((c.endedAt ?? 0) - c.startedAt) : isNow ? fmt(left(c)) : fmt(c.estMs)
     // ✓ validée · ✕ échec · ● en cours · ○ en attente
     const mark = c.failed ? '✕' : isDone ? '✓' : isNow ? '●' : '○'
-    const markColor = c.failed ? RED : isDone ? GREEN : isNow ? ACCENT : 'gray'
+    const markColor = c.failed ? RED : isDone ? CHECK : isNow ? ACCENT : 'gray'
+    // Le temps ne s'affiche que pendant que l'action tourne ; finie, il ne reste que le ✓.
+    const time = c.failed ? <Text size="footnote" color={RED}>échec</Text>
+      : isNow && !isDone ? <Text size="footnote" color={TIME} tabular>{fmt(left(c))}</Text>
+      : false
     return (
       <Box key={'row:' + c.id} flexDirection="column" gap="xs" paddingLeft={1}>
         {line('l',
           <Button key={'call:' + c.id} plain dimColor={isDone || !isNow} onPress={() => set(x => ({ ...x, opened: toggle(x.opened, c.id) }))}>
             <Text wrap="truncate-end"><Text dimColor>{isDetail ? '▾' : '▸'}</Text> <Text color={markColor} dimColor={!isDone && !isNow}>{mark}</Text> {c.label}</Text>
           </Button>,
-          p.showTimes && <Text size="footnote" color={isDone ? markColor : isNow ? ACCENT : 'gray'} dimColor={!isNow && !isDone} tabular>{c.failed ? 'échec' : time}</Text>,
+          p.showTimes && time,
         )}
         {isNow && !isDone && gauge('g-' + c.id, 1 - left(c) / c.estMs)}
         {isDetail && (
@@ -411,8 +420,12 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
 
   const shown = p.showHistory ? list : running
   const groups = ORDER.map(cat => ({ cat, items: shown.filter(c => c.category === cat) })).filter(g => g.items.length)
+  // Temps total de toutes les actions : restant pendant le travail, passé une fois tout fini.
+  const spent = shown.reduce((s, c) => s + (c.endedAt !== undefined ? c.endedAt - c.startedAt : 0), 0)
   const actionsCard = card('actions', [
-    caption('cap', 'Actions'),
+    line('cap', caption('t', 'Actions'), p.showTimes && shown.length > 0 && (running.length
+      ? <Text size="footnote" weight="semibold" color={TIME} tabular>~{fmt(total)}</Text>
+      : <Text size="footnote" weight="semibold" color={CHECK} tabular>✓ {fmt(spent)}</Text>)),
     shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
     ...groups.map(({ cat, items }) => {
       const active = items.filter(c => c.endedAt === undefined)
@@ -428,7 +441,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
             <Button key={'cat:' + cat} plain dimColor={active.length === 0} onPress={() => set(x => ({ ...x, folded: toggle(x.folded, cat) }))}>
               <Text wrap="truncate-end">{isOpen ? '▾' : '▸'} <Text color={active.length ? ACCENT : 'gray'}>{ICON[cat] ?? '·'}</Text> {cat} <Text dimColor>({items.length})</Text></Text>
             </Button>,
-            p.showTimes && <Text size="footnote" color={active.length ? ACCENT : GREEN} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
+            p.showTimes && <Text size="footnote" color={active.length ? TIME : CHECK} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
           )}
           {/* Étape par étape, dans l'ordre où Claude les lance. */}
           {isOpen && items.map(c => row(c, c === first))}
