@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, RenderInput, Timer } from 'claude-code'
 
-import type { Call, FileTouch, Prefs, Step, View } from '../types'
+import type { Call, FileTouch, GuardEntry, Prefs, Step, View } from '../types'
 
 const PANE = 'progress'
 export const COLORS: Record<string, string> = {
@@ -28,6 +28,8 @@ const now = atom({ plugin: 'progress', key: 'now' } as const, 0)
 // Fichiers modifiés pendant toute la conversation (pas vidés à chaque demande).
 const files = atom({ plugin: 'progress', key: 'files' } as const, [], { shape: 'files-1' })
 const FILE_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'MultiEdit']
+// Ce que le garde-fou a demandé ou bloqué pendant la conversation.
+const guard = atom({ plugin: 'progress', key: 'guard' } as const, [], { shape: 'guard-1' })
 
 const PLAN_TOOLS = ['mcp__ccd_turn__update_plan', 'TodoWrite']
 // Durées de départ (ms) tant qu'aucune moyenne réelle n'est enregistrée.
@@ -107,6 +109,22 @@ export function describe(tool: string, a: Args): Pick<Call, 'category' | 'label'
     label: pretty(tool),
     detail: Object.entries(a).filter(([k]) => k !== 'tool' && k !== 'tool_use_id').slice(0, 6).map(([k, v]) => `${k.padEnd(8)} ${clip(typeof v === 'string' ? v : JSON.stringify(v), 120)}`),
   }
+}
+
+// ----- Garde-fou : commandes risquées -----
+// block = refusée d'office (irréparable) ; sinon on demande confirmation.
+const GUARD_RULES: { re: RegExp; reason: string; block?: true }[] = [
+  { re: /\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+(\/|~|\/\*|[a-z]:[\\/]?)\s*($|[;&|])/i, reason: 'Efface tout un disque ou le dossier personnel', block: true },
+  { re: /\b(format(-volume)?\s+[a-z]:|diskpart|mkfs(\.\w+)?\s)/i, reason: 'Formate un disque', block: true },
+  { re: /(Dev & Jeux|\bJEUX\b|Cerveau)[^\n]*\b(rm|del|rmdir|rd|Remove-Item|ri)\b|\b(rm|del|rmdir|rd|Remove-Item|ri)\b[^\n]*(Dev & Jeux|\bJEUX\b|Cerveau)/i, reason: 'Supprime dans tes dossiers Jeux ou Cerveau' },
+  { re: /\brm\s+-[a-z]*r|\bRemove-Item\b[^\n]*-Recurse|\brmdir\s+\/s|\b(rd|del)\s+\/s/i, reason: 'Suppression récursive de dossier' },
+  { re: /\bgit\s+push\b[^\n]*(\s--force(-with-lease)?\b|\s-f\b)/i, reason: 'Push forcé : peut écraser l’historique sur GitHub' },
+  { re: /\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)/i, reason: 'Efface des changements non enregistrés' },
+  { re: /\bgit\s+branch\s+-D\b/, reason: 'Supprime une branche sans vérifier' },
+]
+
+export function guardCheck(command: string): { reason: string; block?: true } | undefined {
+  return GUARD_RULES.find(r => r.re.test(command))
 }
 
 const lineCount = (s: string) => (s ? s.split('\n').length : 0)
@@ -232,6 +250,22 @@ export const register: Register = on => {
     // wrap_up coche tout le plan dans l'app : pareil ici.
     if (e.tool === 'mcp__ccd_turn__wrap_up') await update($, plan, steps => steps.map(s => ({ ...s, status: 'completed' as const })))
     if (HIDDEN_TOOLS.test(e.tool)) return next(e)
+
+    // Garde-fou : avant de lancer une commande risquée, confirmation (ou refus d'office).
+    const command = e.tool === 'Bash' || e.tool === 'PowerShell' ? str(a, 'command') : ''
+    const risk = command ? guardCheck(command) : undefined
+    if (risk && (await read($, prefs)).guard !== false) {
+      let decision: GuardEntry['decision'] = 'bloquée'
+      if (!risk.block) {
+        const answer = await $.ui.ask(`Garde-fou : ${risk.reason}. Lancer quand même « ${clip(command.split('\n')[0] ?? '', 80)} » ?`, { header: 'Garde-fou', options: ['Autoriser', 'Refuser'] })
+          .catch(() => 'Refuser') // fenêtre fermée ou personne pour répondre : on refuse
+        decision = answer === 'Autoriser' ? 'autorisée' : 'refusée'
+      }
+      const at = await $.clock.now()
+      await update($, guard, l => [...l, { at, command: clip(command, 300), reason: risk.reason, decision }].slice(-50))
+      if (decision !== 'autorisée') return { deny: `Garde-fou : ${risk.reason}. Commande ${decision} par l’utilisateur ou par la règle ; ne la relance pas sans lui demander.` }
+    }
+
     const avg = ((await $.store.get('avg')) ?? {}) as Record<string, { n: number; ms: number }>
     const startedAt = await $.clock.now()
     const call: Call = {
@@ -441,6 +475,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
     section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps'), toggleChip('showFiles', 'Fichiers')]),
+    section('s-guard', 'Garde-fou', [chip('guard:toggle', p.guard !== false ? '✓ Actif' : '+ Désactivé', p.guard !== false, () => pick(x => ({ ...x, guard: x.guard === false })))]),
   ])
   if (v.hidden) return <Box flexDirection="column" gap="sm">{header}{settings}</Box>
 
@@ -523,6 +558,41 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     }),
   ])
 
+  // ----- Garde-fou : ce qui a été demandé ou bloqué -----
+  const guarded = await read($, guard)
+  const hhmm = (ms: number) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+  const DECISION: Record<GuardEntry['decision'], { mark: string; color: string }> = {
+    autorisée: { mark: '✓', color: CHECK }, refusée: { mark: '✕', color: RED }, bloquée: { mark: '⛔', color: RED },
+  }
+  const guardCard = p.guard !== false && guarded.length > 0 && card('guard', [
+    <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
+      {caption('cap', `Garde-fou · ${guarded.length}`)}
+      <Text size="footnote" color={CHECK}>● actif</Text>
+    </Box>,
+    ...[...guarded].reverse().map((g, i) => {
+      const id = `g:${g.at}:${i}`
+      const isDetail = v.opened.includes(id)
+      const d = DECISION[g.decision]
+      return (
+        <Box key={id} flexDirection="column" gap="xs" paddingLeft={1}>
+          <Box flexDirection="row" alignItems="center" gap="sm">
+            <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              <Button key={id} plain onPress={() => set(x => ({ ...x, opened: toggle(x.opened, id) }))}>
+                <Text wrap="truncate-end"><Text dimColor>{isDetail ? '▾' : '▸'}</Text> <Text color={d.color}>{d.mark}</Text> {g.reason}</Text>
+              </Button>
+            </Box>
+            <Box flexShrink={0}><Text size="footnote" color={d.color}>{g.decision} · {hhmm(g.at)}</Text></Box>
+          </Box>
+          {isDetail && (
+            <Box flexDirection="column" paddingLeft={2} paddingY="xs">
+              {firstLines(g.command, 6).map((l, j) => <Text key={'c' + j} dimColor mono size="footnote" wrap="truncate-end">{'›  ' + l}</Text>)}
+            </Box>
+          )}
+        </Box>
+      )
+    }),
+  ])
+
   // ----- Fichiers touchés (toute la conversation) -----
   const touched = await read($, files)
   const plusMinus = (key: string, added: number, removed: number) => (
@@ -567,6 +637,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
       {planCard}
       {actionsCard}
       {filesCard}
+      {guardCard}
     </Box>
   )
 }

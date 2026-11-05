@@ -136,3 +136,41 @@ test('fichiers touchés : +/− par fichier, détail au clic, gardés d’une de
   expect(await ui.find({ type: 'Text', text: /Fichiers touchés/i })).toBeUndefined()
   await ui.unmount()
 })
+
+test('garde-fou : confirmation, refus, blocage direct, carte et interrupteur', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  const answers = ['Refuser', 'Autoriser']
+  const asked: string[] = []
+  on('tool.call', { tool: 'AskUserQuestion' }, (_: unknown, e: { questions: { question: string }[] }) => {
+    const q = e.questions[0]!.question
+    asked.push(q)
+    return { result: { questions: e.questions, answers: { [q]: answers.shift() } } }
+  })
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const refused = await $.tool.call({ tool: 'Bash', command: 'git push --force origin main' })
+  expect('deny' in refused).toBe(true)
+  const allowed = await $.tool.call({ tool: 'Bash', command: 'rm -rf ./build' })
+  expect('deny' in allowed).toBe(false)
+  const blocked = await $.tool.call({ tool: 'Bash', command: 'rm -rf /' })
+  expect('deny' in blocked).toBe(true)
+  const safe = await $.tool.call({ tool: 'Bash', command: 'ls -la' })
+  expect('deny' in safe).toBe(false)
+  expect(asked.length).toBe(2) // le blocage direct ne demande rien
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /Garde-fou · 3/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /refusée/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /autorisée/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /bloquée/ })).toBeDefined()
+  await ui.press({ key: 'gear' })
+  await ui.press({ key: 'guard:toggle' })
+  expect((stored.prefs as { guard: boolean }).guard).toBe(false)
+  await ui.unmount()
+
+  // Désactivé : plus aucune question, la commande passe.
+  const off = await $.tool.call({ tool: 'Bash', command: 'git reset --hard' })
+  expect('deny' in off).toBe(false)
+  expect(asked.length).toBe(2)
+})
