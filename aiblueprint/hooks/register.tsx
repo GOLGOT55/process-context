@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, SessionUsage } from 'claude-code'
 
 import type { Background, Density, GaugeStyle, Limit, NumberStyle, Prefs, Usage } from '../types'
+import { COMPACT_AT, RULES, savedTokens } from './econome.js'
 
 const SESSION_MS = 5 * 3600 * 1000
 const WEEK_MS = 7 * 24 * 3600 * 1000
@@ -32,6 +33,7 @@ const TRACK = '#2a303a'
 const CARD_BG = '#121419'
 const CARD_BORDER = '#232833'
 const DIVIDER = '#3a414d'
+const ECO = '#4ade80' // vert de l'économie
 
 const GAUGES: readonly { value: GaugeStyle; label: string }[] = [
   { value: 'line', label: 'Ligne' },
@@ -61,9 +63,13 @@ const TOGGLES = [
   { field: 'showWeek', label: 'Semaine' },
   { field: 'showPace', label: 'Rythme' },
   { field: 'showReset', label: 'Reset' },
+  { field: 'showEconomy', label: 'Économie' },
 ] as const
 
 const usageAtom = atom({ plugin: 'aiblueprint', key: 'usage' } as const, null)
+// Tokens de réponse écrits pendant que le mode économe était actif, sur cette session.
+const outAtom = atom({ plugin: 'aiblueprint', key: 'outTokens' } as const, 0)
+const ECONOME_ID = 'aiblueprint:econome'
 const settingsOpenAtom = atom({ plugin: 'aiblueprint', key: 'settingsOpen' } as const, false)
 const prefsAtom = atom({ plugin: 'aiblueprint', key: 'prefs' } as const, null)
 const PREFS_STORE_KEY = 'prefs'
@@ -287,6 +293,8 @@ function basePrefs(options: Options): Prefs {
     showWeek: options.showWeek,
     showPace: options.showPace,
     showReset: options.showReset,
+    economy: true, // mode économe actif dès l'installation
+    showEconomy: true,
     gauge: options.showBars ? 'line' : 'none',
     accent: ACCENTS[0].value,
     numbers: 'both',
@@ -310,6 +318,8 @@ function asPrefs(value: unknown, base: Prefs): Prefs {
     showWeek: bool('showWeek'),
     showPace: bool('showPace'),
     showReset: bool('showReset'),
+    economy: bool('economy'),
+    showEconomy: bool('showEconomy'),
     gauge: oneOf(s.gauge, GAUGES, typeof s.showBars === 'boolean' && !s.showBars ? 'none' : base.gauge),
     accent: oneOf(s.accent, ACCENTS, base.accent),
     numbers: oneOf(s.numbers, NUMBERS, base.numbers),
@@ -367,6 +377,29 @@ function ensureTicking($: EngineInterface) {
   void refresh($)
 }
 
+// ---------- Compactage automatique (mode économe) ----------
+
+// Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
+let isCompacting = false
+async function autoCompact($: EngineInterface) {
+  if (isCompacting) return
+  const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens ?? 0
+  if (tokens < COMPACT_AT) return
+  isCompacting = true
+  let tries = 0
+  let isTrying = false // un seul essai à la fois (un compactage dure plus de 2 s)
+  const timer = $.clock.every(2000, () => {
+    if (isTrying) return
+    if (++tries > 10) { isCompacting = false; return timer.cancel() }
+    isTrying = true
+    void $.session.compact().then(({ skip }) => {
+      isCompacting = false
+      timer.cancel()
+      if (!skip) $.ui.toast(`Contexte à ${Math.round(tokens / 1000)}k tokens : conversation compactée pour économiser.`)
+    }).catch(() => {}).finally(() => { isTrying = false }) // un tour tourne encore : on réessaie dans 2 s
+  })
+}
+
 // ---------- Register ----------
 
 export const register: Register = (on, rawOptions) => {
@@ -402,13 +435,25 @@ export const register: Register = (on, rawOptions) => {
 
   on('turn.complete', async ($, e, next) => {
     const completed = await next(e)
+    const out = e.usage?.output_tokens ?? 0
+    const isEconomy = ((await read($, prefsAtom)) ?? base).economy
+    if (out > 0 && isEconomy) await update($, outAtom, n => n + out)
+    if (isEconomy) await autoCompact($)
     ensureTicking($)
     void refresh($)
     return completed
   })
 
+  // Mode économe : règles caveman + ponytail dans le prompt système de chaque requête.
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    if ((await read($, prefsAtom)) === null) await loadPrefs($)
+    if (!((await read($, prefsAtom)) ?? base).economy) return composed
+    return { sections: [...composed.sections.filter(x => x.id !== ECONOME_ID), { id: ECONOME_ID, text: RULES, scope: 'session' }] }
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const [storedUsage, isSettingsOpen, storedPrefs] = await Promise.all([read($, usageAtom), read($, settingsOpenAtom), read($, prefsAtom)])
+    const [storedUsage, isSettingsOpen, storedPrefs, outTokens] = await Promise.all([read($, usageAtom), read($, settingsOpenAtom), read($, prefsAtom), read($, outAtom)])
     // Same rule as the original 0.7 that draws reliably: nothing until the first reading, and only reads while drawing.
     if (e.props.hasSurvey) return next(e)
     // Drawn from the very first frame: before the first timed reading, read the session's usage here (a read only).
@@ -431,6 +476,10 @@ export const register: Register = (on, rawOptions) => {
     const reset = () => savePrefs($, () => base, base)
     const toggleSettings = () => update($, settingsOpenAtom, isOpen => !isOpen)
 
+    // Case à cocher : active ou coupe le mode économe (gardé pour toutes les sessions).
+    const ecoBox = (
+      <Button key="eco-toggle" plain dimColor={!prefs.economy} label={prefs.economy ? '☑ actif' : '☐ inactif'} onPress={() => set('economy', !prefs.economy)} />
+    )
     const gear = (
       <Button key="gear" label={isSettingsOpen ? '✕' : '⚙'} plain dimColor={!isSettingsOpen} onPress={toggleSettings} />
     )
@@ -481,6 +530,12 @@ export const register: Register = (on, rawOptions) => {
               </Text>
             )}
             {prefs.showCostTime && <Text key="cost" bold color={accent}>{formatCost(usage.cost)}{usage.durationMs !== undefined ? ` · ${formatDuration(usage.durationMs)}` : ''}</Text>}
+            {prefs.showEconomy && (
+              <Box key="eco" flexDirection="row" gap={1}>
+                <Text><Text dimColor>éco </Text><Text bold color={prefs.economy ? ECO : 'gray'}>~{formatTokens(savedTokens(outTokens))}</Text></Text>
+                {ecoBox}
+              </Box>
+            )}
             {limits.map(({ key, label, limit }) => (
               <Text key={key}>
                 <Text dimColor>{label} </Text>
@@ -553,6 +608,16 @@ export const register: Register = (on, rawOptions) => {
         <Box key="cost" flexDirection="column" gap={0}>
           <Text size="caption" dimColor weight="medium">SESSION</Text>
           <Text weight="semibold" color={accent}>{formatCost(usage.cost)}{usage.durationMs !== undefined && <Text size="footnote" dimColor> · {formatDuration(usage.durationMs)}</Text>}</Text>
+        </Box>
+      ),
+      prefs.showEconomy && (
+        <Box key="eco" flexDirection="column" gap={0}>
+          <Text size="caption" dimColor weight="medium">ÉCONOMIE</Text>
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Text weight="semibold" color={prefs.economy ? ECO : 'gray'} dimColor={!prefs.economy}>~{formatTokens(savedTokens(outTokens))}</Text>
+            <Text size="footnote" dimColor>tokens</Text>
+            {ecoBox}
+          </Box>
         </Box>
       ),
       ...limits.map(({ key, label, limit }) => {

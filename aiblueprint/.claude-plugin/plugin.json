@@ -1,7 +1,7 @@
 {
   "name": "aiblueprint",
-  "version": "1.3.1",
-  "description": "Carte Contexte au-dessus de la saisie : contexte utilisé, limites 5 h et semaine, rythme et heure de remise à zéro.",
+  "version": "1.4.0",
+  "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
   "author": {
     "name": "GOLGOT55",
     "url": "https://github.com/GOLGOT55"
@@ -14,61 +14,61 @@
     "showSession": {
       "type": "boolean",
       "title": "Session chip",
-      "description": "Show the session cost chip.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "showFiveHour": {
       "type": "boolean",
       "title": "5h chip",
-      "description": "Show the 5-hour session limit.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "showWeek": {
       "type": "boolean",
       "title": "Week chip",
-      "description": "Show the weekly limit (all models).",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "showBars": {
       "type": "boolean",
       "title": "Bars",
-      "description": "Draw a progress bar in the 5h and Week chips.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "showPace": {
       "type": "boolean",
       "title": "Pace",
-      "description": "Show the +/- pace: positive means you use less than the time elapsed.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "showReset": {
       "type": "boolean",
       "title": "Reset time",
-      "description": "Show when each limit resets.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": true
     },
     "sessionLabel": {
       "type": "string",
       "title": "Session label",
-      "description": "Label of the cost chip.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": "S"
     },
     "fiveHourLabel": {
       "type": "string",
       "title": "5h label",
-      "description": "Label of the 5-hour chip.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": "5h"
     },
     "weekLabel": {
       "type": "string",
       "title": "Week label",
-      "description": "Label of the weekly chip.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": "Week"
     },
     "refreshSeconds": {
       "type": "number",
       "title": "Refresh (seconds)",
-      "description": "How often the band reads usage again.",
+      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
       "default": 30
     }
   }

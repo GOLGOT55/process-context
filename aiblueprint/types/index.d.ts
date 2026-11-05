@@ -21,6 +21,9 @@ export type Prefs = {
   showWeek: boolean
   showPace: boolean
   showReset: boolean
+  // Mode économe (règles dans le prompt système) et affichage de son estimation.
+  economy: boolean
+  showEconomy: boolean
   gauge: GaugeStyle
   accent: string
   numbers: NumberStyle
@@ -30,6 +33,6 @@ export type Prefs = {
 
 declare module 'claude-code' {
   interface PluginState {
-    aiblueprint: { usage: Usage | null; settingsOpen: boolean; prefs: Prefs | null }
+    aiblueprint: { usage: Usage | null; settingsOpen: boolean; prefs: Prefs | null; outTokens: number }
   }
 }

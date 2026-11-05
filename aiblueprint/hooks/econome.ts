@@ -1,5 +1,3 @@
-import type { Register } from 'claude-code'
-
 // Règles caveman (réponses) + ponytail (code), ajoutées au prompt système de chaque requête.
 // En anglais : moins de tokens pour le même sens ; la langue de réponse reste celle de l'utilisateur.
 export const RULES = `# Econome mode (always on): terse answers, minimal code
@@ -24,25 +22,12 @@ export const RULES = `# Econome mode (always on): terse answers, minimal code
 - Read only the part of a file you need. Do not re-read files you just edited. Batch independent tool calls.
 - Do not repeat the user's request or earlier answers. Do not narrate commands or their output unless needed.`
 
-const SECTION_ID = 'econome:rules'
+// Au-delà, le mode économe compacte la conversation tout seul (comme /compact) : chaque requête relit tout le contexte.
+export const COMPACT_AT = 400_000
 
-export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'econome', description: 'Mode économe (réponses courtes, code minimal) : /econome on | off' })
-    return next(e)
-  })
+// Part des tokens de réponse que ces règles font gagner, d'après les mesures publiées par caveman et ponytail.
+// shortcut: taux fixe (estimation), pas une mesure de cette session ; à remplacer par une mesure A/B si besoin.
+export const SAVE_RATIO = 0.4
 
-  // /econome on | off : gardé pour toutes les sessions.
-  on('command.run', { command: 'econome' }, async ($, e) => {
-    const arg = e.args.trim().toLowerCase()
-    const isOff = arg === 'off' ? true : arg === 'on' ? false : (await $.store.get('off')) !== true
-    await $.store.set('off', isOff)
-    return { text: isOff ? 'Mode économe désactivé.' : 'Mode économe activé : réponses courtes, code minimal.' }
-  })
-
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
-    if ((await $.store.get('off')) === true) return composed
-    return { sections: [...composed.sections.filter(s => s.id !== SECTION_ID), { id: SECTION_ID, text: RULES, scope: 'session' }] }
-  })
-}
+// Tokens économisés estimés : ce qui a été écrit avec les règles, comparé à la même chose sans elles.
+export const savedTokens = (outTokens: number) => Math.round((outTokens * SAVE_RATIO) / (1 - SAVE_RATIO))

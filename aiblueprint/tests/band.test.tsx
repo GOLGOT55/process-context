@@ -115,3 +115,53 @@ test('rien de mesuré encore : Contexte, 5h et Semaine affichés à 0 %', async 
   expect((await ui.findAll({ type: 'Text', text: /^0%$/ })).length).toBeGreaterThanOrEqual(3)
   await ui.unmount()
 })
+
+test('mode économe : actif par défaut, estimation des tokens économisés, case pour le couper', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept: Record<string, unknown> = {}
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('session.usage', () => ({ value: USAGE }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }) as never)
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+  const compose = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] } as never
+
+  // Actif sans rien régler : les règles sont dans le prompt système.
+  const ids = async () => (await $.prompt.compose(compose)).sections.map((x: { id: string }) => x.id)
+  expect(await ids()).toEqual(['intro', 'aiblueprint:econome'])
+
+  // 6000 tokens de réponse écrits avec les règles ≈ 4000 économisés (taux 40 %).
+  await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't', usage: { input_tokens: 0, output_tokens: 6000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' } } as never)
+  const ui = await mountBand($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /^ÉCONOMIE$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /~4(\.0)?k/ })).toBeDefined()
+  expect((await ui.find({ type: 'Button', key: 'eco-toggle' }))?.text).toContain('☑')
+
+  // Case décochée : mode coupé, règles retirées, choix gardé.
+  await ui.press({ key: 'eco-toggle' })
+  expect((await ui.find({ type: 'Button', key: 'eco-toggle' }))?.text).toContain('☐')
+  expect((kept.prefs as { economy: boolean }).economy).toBe(false)
+  expect(await ids()).toEqual(['intro'])
+  await ui.unmount()
+})
+
+test('mode économe : compactage automatique à 400k tokens de contexte, une seule fois', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let compacts = 0
+  on('fs.write', () => undefined)
+  on('store.get', () => ({ value: undefined }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
+  on('session.usage', () => ({ value: { ...USAGE, context: { tokens: 450_000, window: 1_000_000, percent: 45 } } }) as never)
+  on('session.compact', () => { compacts++; return { skip: 'test' } as never })
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  const done = { answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't' } as never
+  await $.turn.complete(done)
+  await $.turn.complete(done) // déjà en cours : pas de second compactage
+  await clock.advance(2_100)
+  await clock.advance(2_100)
+  expect(compacts).toBe(1)
+})
