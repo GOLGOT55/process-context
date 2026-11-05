@@ -174,6 +174,8 @@ function limitOf(usage: SessionUsage, kind: string, windowMs: number, now: numbe
   const limit = usage.rateLimits.find(item => item.kind === kind)
   if (!limit) return undefined
   const resetsInMs = limit.resetsAt ? new Date(limit.resetsAt).getTime() - now : undefined
+  // Valeur gardée d'une session d'avant dont la fenêtre est déjà remise à zéro.
+  if (resetsInMs !== undefined && resetsInMs <= 0) return { percent: 0 }
   const elapsedPercent = resetsInMs !== undefined ? ((windowMs - resetsInMs) / windowMs) * 100 : undefined
   return {
     percent: limit.percentUsed,
@@ -188,7 +190,23 @@ function contextOf(usage: SessionUsage): Usage['context'] {
   return value === undefined ? undefined : { percent: value, tokens, window }
 }
 
-function compute(usage: SessionUsage, now: number): Usage {
+// Dernières limites 5h/semaine connues : le moteur ne les a qu'après la première réponse de la conversation,
+// donc on les garde ($.store) pour les afficher dès l'ouverture.
+const LIMITS_STORE_KEY = 'limits'
+let lastLimits: SessionUsage['rateLimits'] | undefined
+
+async function rememberLimits($: EngineInterface, usage: SessionUsage) {
+  if (usage.rateLimits.length > 0) {
+    lastLimits = usage.rateLimits
+    await $.store.set(LIMITS_STORE_KEY, usage.rateLimits).catch(() => undefined)
+  } else if (lastLimits === undefined) {
+    const saved = await $.store.get(LIMITS_STORE_KEY).catch(() => undefined)
+    lastLimits = Array.isArray(saved) ? (saved as SessionUsage['rateLimits']) : []
+  }
+}
+
+function compute(raw: SessionUsage, now: number): Usage {
+  const usage = raw.rateLimits.length > 0 || !lastLimits?.length ? raw : { ...raw, rateLimits: lastLimits }
   return {
     cost: usage.cost?.usd ?? 0,
     context: contextOf(usage),
@@ -221,6 +239,7 @@ async function refresh($: EngineInterface): Promise<void> {
   try {
     if ((await read($, prefsAtom)) === null) await loadPrefs($)
     const [usage, now] = await Promise.all([$.session.usage(), $.clock.now()])
+    await rememberLimits($, usage)
     const next = compute(usage, now)
     await update($, usageAtom, () => next)
     await seedLimitsCache($, usage, now)

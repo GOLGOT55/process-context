@@ -69,6 +69,7 @@ Les réglages sont gardés pour toutes les sessions.
 ## Contexte
 
 - Contexte utilisé (tokens et pourcentage), limites 5 h et semaine avec jauge, rythme (+/−) et heure de remise à zéro.
+- 5 h et semaine s'affichent dès l'ouverture d'une conversation : les dernières valeurs connues sont gardées jusqu'à la première réponse.
 - Bouton **⚙** pour choisir ce qui s'affiche, le style de jauge, la couleur, la taille et le fond.
 - Options aussi réglables dans les paramètres de Claude Code (`pluginConfigs`).
 

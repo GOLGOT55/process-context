@@ -61,3 +61,20 @@ test('the band draws at once, before any measure or message', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('5h et Semaine s’affichent dès l’ouverture, avec les dernières limites gardées', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: e.key === 'limits' ? USAGE.rateLimits : undefined }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
+  // Nouvelle conversation : le moteur n'a pas encore de limites.
+  on('session.usage', () => ({ value: { ...USAGE, rateLimits: [] } }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+  const ui = await mountBand($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /^5h ?$/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Semaine ?$/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^7%$/ })).toBeDefined()
+  await ui.unmount()
+})
