@@ -3,6 +3,7 @@ import type { EngineInterface, Register, RenderChildren, RenderInput, Timer } fr
 
 import type { Call, FileChange, FileTouch, FileView, GuardEntry, Prefs, Step, View } from '../types'
 import { buildSkillIndex, COMPACT_AT, parseSkill, RULES } from './econome.js'
+import { contextAfterTurn, contextRefresh, contextRender, contextStart, setupContext } from './context.js'
 
 const PANE = 'radar'
 export const COLORS: Record<string, string> = {
@@ -406,6 +407,23 @@ async function ensureOpen($: EngineInterface, isAsked = false) {
   }
 }
 
+// L'app relance Claude Code après stop, rebobinage ou fin de limite, et son écran s'attache plus tard :
+// toutes les 3 s, tant que la session vit, on rouvre le panneau s'il n'est pas affiché (sauf fermé à la main).
+let isUserClosed = false
+let watcher: Timer | undefined
+function watchPane($: EngineInterface) {
+  if (watcher) return
+  let isChecking = false
+  watcher = $.clock.every(3000, () => {
+    if (isUserClosed || isChecking) return
+    isChecking = true
+    void $.ui.panes()
+      .then(l => (l.some(x => x.id === PANE && x.isPlaced) ? undefined : ((isOpened = false), ensureOpen($))))
+      .catch(() => {})
+      .finally(() => { isChecking = false })
+  })
+}
+
 // Change un réglage, le garde pour les prochaines sessions, et ajuste la largeur.
 async function setPrefs($: EngineInterface, fn: (p: Prefs) => Prefs) {
   const p = await update($, prefs, fn)
@@ -451,7 +469,20 @@ async function scanSkills($: EngineInterface) {
 }
 
 // Le réglage gardé fait foi (le panneau peut ne pas encore avoir chargé les préférences).
-const isEconome = async ($: EngineInterface) => ((await $.store.get('prefs').catch(() => undefined)) as Partial<Prefs> | undefined)?.econome !== false
+export async function isEconome($: EngineInterface) {
+  return ((await $.store.get('prefs').catch(() => undefined)) as Partial<Prefs> | undefined)?.econome !== false
+}
+
+// Pour la carte Contexte : lit le réglage et la redessine quand il change (lecture de l'atome).
+export async function econome($: EngineInterface) {
+  await read($, prefs)
+  return isEconome($)
+}
+
+// La case de la carte Contexte change le même réglage que ⚙ de Radar.
+export async function setEconome($: EngineInterface, isOn: boolean) {
+  await setPrefs($, x => ({ ...x, econome: isOn }))
+}
 
 // ---------- Compactage automatique (mode économe) ----------
 // Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
@@ -488,11 +519,23 @@ async function autoCompact($: EngineInterface) {
   })
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // Carte Contexte au-dessus de la saisie ; son mode économe est celui de Radar.
+  setupContext(options)
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => (await contextRender($, e)) ?? next(e))
+
+  on('session.measure', async ($, e, next) => {
+    const measured = await next(e)
+    contextRefresh($)
+    return measured
+  })
+
   // Réponse interrompue (bouton stop) : ce qui tournait encore est marqué arrêté, le panneau reste.
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     if (e.isAborted) await stopRunning($)
+    await contextAfterTurn($, e.usage?.output_tokens ?? 0)
     void ensureOpen($).catch(() => {}) // en arrière-plan : ne retarde rien
     if (await isEconome($)) await autoCompact($)
     return done
@@ -504,20 +547,21 @@ export const register: Register = on => {
     if (!(await isEconome($))) return composed
     if ((await $.clock.now()) - skillScanAt > RESCAN_MS) await scanSkills($).catch(() => {})
     const text = skillIndex ? `${RULES}\n\n${skillIndex}` : RULES
-    // Radar et Contexte ensemble : une seule copie des règles économes.
-    return { sections: [...composed.sections.filter(x => !x.id.endsWith(':econome')), { id: ECONOME_ID, text, scope: 'session' }] }
+    return { sections: [...composed.sections.filter(x => x.id !== ECONOME_ID), { id: ECONOME_ID, text, scope: 'session' }] }
   })
 
   on('session.start', async ($, e, next) => {
     void scanSkills($).catch(() => {})
     await $.command.register({ name: 'radar', description: 'Ouvrir le panneau Radar à droite' })
-    // L'écran de l'app s'attache un peu après le démarrage (ou après un redémarrage, ex. bouton stop) :
-    // on retente toutes les 2 s (≈ 2 min max) jusqu'à ce que le panneau soit vraiment affiché.
-    let tries = 0
-    const opener: Timer = $.clock.every(2000, () => {
-      if (isOpened || ++tries > 60) return opener.cancel()
-      void ensureOpen($).catch(() => {})
-    })
+    watchPane($)
+    const started = await next(e)
+    await contextStart($)
+    return started
+  })
+
+  // Fermé à la main (✕) : on ne le rouvre plus tout seul jusqu'au prochain message ou /radar.
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE && e.origin.kind === 'person') isUserClosed = true
     return next(e)
   })
 
@@ -529,6 +573,8 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'radar' }, async $ => {
+    isUserClosed = false
+    watchPane($)
     await ensureOpen($, true)
     return { text: 'Panneau Radar ouvert (⚙ pour le personnaliser).' }
   })
@@ -543,6 +589,8 @@ export const register: Register = on => {
     void ensureOpen($).catch(() => {}) // en arrière-plan : ne retarde jamais ton message
     // Rappels automatiques (tâches de fond, déclencheurs, autres sessions) : pas une nouvelle demande.
     if (!['composer', 'bridge', 'sdk'].includes(e.origin.kind)) return next(e)
+    isUserClosed = false // un message de toi (ex. le premier accepté après la fin de limite) le fait revenir
+    watchPane($) // mod chargé en cours de session : pas de session.start
     // Nouvelle demande : on repart de zéro (on garde seulement ce qui tourne encore).
     const left = await update($, calls, l => l.filter(c => c.endedAt === undefined))
     if (left.length === 0) await update($, plan, () => [])
@@ -612,6 +660,7 @@ export const register: Register = on => {
       ticker?.cancel()
       ticker = undefined
     }
+    contextRefresh($) // la carte Contexte se met à jour sans attendre la fin de la réponse
     return ran
   })
 

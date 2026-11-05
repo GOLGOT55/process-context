@@ -36,6 +36,16 @@ export type GuardEntry = { at: number; command: string; reason: string; decision
 // Réglages de la fenêtre, gardés d'une session à l'autre (copiés dans $.store).
 export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean; guard?: boolean; econome?: boolean; hiddenCats?: string[] }
 
+// ----- Carte Contexte (au-dessus de la saisie) -----
+export type CtxLimit = { percent: number; pace?: number; resetsInMs?: number }
+export type CtxUsage = { cost: number; context?: { percent: number; tokens?: number; window: number }; session?: CtxLimit; week?: CtxLimit; durationMs?: number }
+export type CtxGaugeStyle = 'line' | 'segments' | 'ring' | 'none'
+export type CtxNumberStyle = 'both' | 'tokens' | 'percent'
+export type CtxDensity = 'compact' | 'comfort'
+export type CtxBackground = 'card' | 'none'
+// Réglages de la carte, gardés dans $.store (clé ctxPrefs).
+export type CtxPrefs = { showContext: boolean; showCostTime: boolean; showFiveHour: boolean; showWeek: boolean; showPace: boolean; showReset: boolean; showEconomy: boolean; gauge: CtxGaugeStyle; accent: string; numbers: CtxNumberStyle; density: CtxDensity; background: CtxBackground }
+
 declare module 'claude-code' {
   interface PluginState {
     radar: {
@@ -49,6 +59,10 @@ declare module 'claude-code' {
       fileView: Shaped<FileView>
       popped: Shaped<PoppedFile[]>
       editing: Shaped<EditDraft[]>
+      ctxUsage: CtxUsage | null
+      ctxSettingsOpen: boolean
+      ctxPrefs: CtxPrefs | null
+      ctxOutTokens: number
     }
   }
 }

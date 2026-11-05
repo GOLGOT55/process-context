@@ -357,6 +357,15 @@ test('ouverture dès le début de la session (sans attendre une demande) et comm
   const r = await $.command.run({ command: 'radar', args: '' } as never)
   expect((r as { text: string }).text).toContain('Radar')
   expect(ids.length).toBe(2)
+
+  // Fin de limite / relance : l'écran revient sans le panneau, il se rouvre tout seul en ≤ 3 s.
+  ids.length = 0
+  attached = false
+  await clock.advance(3_100)
+  expect(ids.length).toBe(0) // pas d'écran : rien à faire
+  attached = true
+  await clock.advance(3_100)
+  expect(ids).toEqual(['radar'])
 })
 
 test('l’app se reconnecte (redémarrage, bouton stop) : le panneau se rouvre tout de suite, raison gardée sinon', async ($, on) => {

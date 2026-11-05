@@ -1,111 +1,101 @@
 # Radar
 
-Two mods for **Claude Code** that show what is happening during a session:
+One mod for **Claude Code** that shows what is happening during a session:
 
-| Mod | Where | What it shows |
-| --- | --- | --- |
-| **Radar** (`radar`) | Panel to the right of the conversation | Claude's actions live, step by step with ✓, estimated times, the details of each action, the files it touched, a safety guard and the economy mode |
-| **Context** (`aiblueprint`) | Card above the prompt box | Context used, session cost and duration, 5-hour and weekly limits (alert at 80%), and tokens saved by the economy mode |
+- **Radar panel** (right of the conversation): Claude's actions live, step by step with ✓, estimated times, the details of each action, the files it touched and a safety guard.
+- **Context card** (above the prompt box): context used, session cost and duration, 5-hour and weekly limits (alert at 80%), tokens saved.
+- **Economy mode**: short answers, minimal code, auto-compaction at 400k tokens and smart skill selection.
 
 ## Install
 
-### Everything in one command
+### Option 1 — one command
 
 In a terminal (PowerShell, bash or zsh):
 
 ```bash
-claude plugin install radar --marketplace GOLGOT55/process-context; claude plugin install aiblueprint --marketplace GOLGOT55/process-context
+claude plugin install radar --marketplace GOLGOT55/radar --scope user
 ```
 
-Then open a new Claude Code session: both mods are active.
+### Option 2 — add the marketplace, then install
 
-### One at a time
+Use this if option 1 is refused, or to see the marketplace in your list:
 
-At the prompt of a Claude Code session in a terminal:
-
-```
-/plugin install radar --marketplace GOLGOT55/process-context
-/plugin install aiblueprint --marketplace GOLGOT55/process-context
+```bash
+claude plugin marketplace add GOLGOT55/radar
+claude plugin install radar@radar --scope user
 ```
 
-Answer `y` to add the marketplace, then pick the scope (user = all your sessions).
+Same thing from the prompt of a Claude Code session:
 
-In the Claude app (Code tab): **+** button next to the prompt box → **Plugins** → **Add marketplace** with `GOLGOT55/process-context`, then **Add plugin** for each mod.
+```
+/plugin marketplace add GOLGOT55/radar
+/plugin install radar@radar
+```
 
-## Radar
+In the Claude app (Code tab): **+** next to the prompt box → **Plugins** → **Add marketplace** `GOLGOT55/radar` → **Add plugin** → Radar.
 
-- Opens on its own on the right as soon as the session starts (at the latest on the first request); `/radar` reopens it.
-- **Categories**: Read, Search, Web, Edits, Commands, Agents, Skills, Other. A finished category gets a ✓.
+Then open a new session: the panel and the card appear on their own. To update later: `claude plugin marketplace update radar`.
+
+If you used the older mods (`progress`, `aiblueprint`), uninstall them first so nothing shows twice:
+
+```bash
+claude plugin uninstall progress; claude plugin uninstall aiblueprint
+```
+
+## Radar panel
+
+- Opens on its own when the session starts; `/radar` reopens it.
+- **Stays up**: after stop, rewind, or when your usage limit resets, it comes back on its own within 3 seconds once Claude Code is running again (your next accepted message). Closed by hand with ✕, it stays closed until your next message or `/radar`.
+- **Categories**: Read, Search, Web, Edits, Commands, Agents, Skills, Other. A finished category gets a ✓. Categories are folded by default: only the running action shows, with its timer.
 - **Collapsible cards**: click a title (▾ / ▸) — Plan, Actions, Files touched, Guard — to fold it.
-- **Estimated time** counting down for each running action, learned from real durations and kept across sessions.
-- **Details on click**: file and lines, search pattern and folder, web page or query, command, edit preview (−/+), end of the result.
-- **Total time** on the Actions card: time left while working, then time spent (✓) once done.
-- **Step by step**: each sub-action has a state — ✓ done, ● running (with countdown), ○ waiting, ✕ failed, ■ stopped.
-- **Stop button**: a stopped command ends as "stopped", its timer stops and the panel stays open.
+- **Estimated time** counting down for each running action, learned from real durations and kept across sessions. Total time on the Actions card.
+- **Details on click**: file and lines, search pattern, web page or query, command, edit preview (−/+), end of the result.
+- **Step by step**: ✓ done, ● running, ○ waiting, ✕ failed, ■ stopped.
 - **History**: finished actions stay visible; each new request starts from an empty panel.
 - **Plan**: Claude's plan at the top (○ to do, ● in progress, ✓ done).
-- **Files touched**: every file edited during the conversation, with +/− lines per file and in total. Clicking a name opens the file in **its own editor window** (one per file):
-  - **Content** tab: numbered file, lines changed by Claude highlighted in green;
-  - **Changes** tab: each edit with its real line number, removed lines in red (−), added lines in green (+);
-  - **Direct editing**: ✎ Edit makes the text editable, ✓ Confirm writes the file, ✕ Cancel changes nothing. If the file changed on disk meanwhile, nothing is overwritten (not on mobile: no text field there);
-  - if the app refuses separate windows, files open as **tabs** inside Radar.
-- **Guard** (on/off in ⚙): before a risky command, a dialog asks Allow or Deny:
-  - recursive delete (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`);
-  - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`.
+- **Files touched**: every file edited during the conversation, with +/− lines. Clicking a name opens the file in **its own editor window**:
+  - **Content** tab: numbered file, lines changed by Claude in green;
+  - **Changes** tab: each edit with its real line number, removed lines in red, added in green;
+  - **Direct editing**: ✎ Edit, then ✓ Confirm writes the file, ✕ Cancel changes nothing. If the file changed on disk meanwhile, nothing is overwritten (not on mobile);
+  - if the app refuses separate windows, files open as tabs inside Radar.
+- **Guard** (on/off in ⚙): before a risky command (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`) a dialog asks Allow or Deny. Wiping or formatting a drive is always denied. Only real commands count, not text that mentions them.
 
-  Only real commands count: text that merely contains these words triggers nothing. Wiping or formatting a whole drive is always denied. The Guard card lists each command with ✓ allowed, ✕ denied or ⛔ blocked.
-- **Categories folded by default**: only the running action shows, with its timer; once done it folds away and the category shows ✓.
+**⚙** settings: color, color of ✓ and times, gauge (line, segments, ring, none — shown right of the titles, visible when folded), background, width, what to show, each category, guard, economy mode. Kept for all sessions.
 
-### Customize
+## Context card
 
-**⚙** button:
-
-- Color, color of ✓ checks, color of times
-- Gauge: line, segments, ring or none — placed to the right of the titles, so it stays visible when a card is folded
-- Background: card, black, slate, transparent
-- Width: narrow, normal, wide
-- Show or hide: summary, plan, history, times, files, and each category
-- Guard and economy mode: on or off
-
-Settings are kept for all sessions.
-
-## Economy mode (in Radar and Context)
-
-On by default. On every request it adds these rules to the system prompt:
-
-- **caveman**: answer first, no pleasantries or recap, short sentences, code and errors copied verbatim;
-- **ponytail**: smallest complete change, reuse what exists, nothing unrequested.
-
-More reliable than a skill: the model rereads the rules on every message. About 435 tokens per request, cached by the API. With both mods installed, the rules are added only once.
-
-- **Smart skill use**: at startup the mod reads your skills (`~/.claude/skills`), sorts them by category (Games, Code, Web & design, Video…) and gives Claude the list with a rule: use a skill only for real work it matches, and only the 1–2 most specific ones. New skills are picked up on their own (checked every 10 min). About 280 tokens.
-- **Auto-compaction at 400k tokens**. To let Claude Code do it itself, even when the app restarts its process between messages, add to `~/.claude/settings.json`:
-  `"env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40" }` (40% of a 1M window = 400k).
-- **Tokens saved** (Context card): output tokens written with the mode × 40% ÷ 60% (an average rate, not an exact measure), shown as "~4.1K" and kept per session.
-- Security warnings, questions and anything written to files stay in full sentences.
-
-## Context
-
-- Context used (tokens and percent), 5-hour and weekly limits with a gauge, pace (+/−) and reset time.
-- **Cost & time**: session cost and how long it has been running.
+- Context used (tokens and percent), 5-hour and weekly limits with gauge, pace (+/−) and reset time.
+- **Cost & time** of the session.
 - **80% alert**: one notification per window and a ⚠ when the 5-hour limit passes 80%.
-- Limits show from the start of a conversation: the last known values are kept until the first reply.
-- **⚙** button to choose what shows, gauge style, color, size and background. Options are also available in Claude Code settings (`pluginConfigs`).
+- Shows from the start of a conversation, with the last known limits; 0% when nothing is measured yet.
+- **⚙** to choose what shows, gauge style, color, size and background. Also in Claude Code settings (`pluginConfigs`).
+
+## Economy mode
+
+On by default; the ☑ box on the Context card and ⚙ in Radar turn it on or off (same setting). On every request it adds to the system prompt:
+
+- **caveman** rules: answer first, no pleasantries or recap, short sentences, code and errors verbatim;
+- **ponytail** rules: smallest complete change, reuse what exists, nothing unrequested;
+- **your skills, sorted by category** (Games, Code, Web & design, Video…), with a rule: only for real work they match, the 1–2 most specific. New skills are picked up within 10 minutes.
+
+About 700 tokens per request, cached by the API. Security warnings, questions and anything written to files stay in full sentences.
+
+- **Tokens saved** (Context card): output tokens written with the mode × 40% ÷ 60% (an average rate, not a measure), shown as "~4.1K" and kept per session.
+- **Auto-compaction at 400k tokens.** For Claude Code to do it itself even when the app restarts its process between messages, add to `~/.claude/settings.json`:
+  `"env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40" }` (40% of a 1M window = 400k).
 
 ## Limits
 
-- A mod cannot draw in the app's Environment / Context / Connectors column: Radar opens in its own panel on the right.
-- Times are estimates: Claude does not announce how long its actions will take.
-- Mods only run while Claude Code is running. After stop, rewind, or when your usage limit is reached, the app does not start Claude Code until your next accepted message, so the panels disappear until then.
+- Mods only run while Claude Code runs. When your usage limit is reached, the app does not start Claude Code, so nothing can draw until a message is accepted again; Radar then comes back on its own.
+- A mod cannot draw in the app's Environment / Context / Connectors column: Radar uses its own panel.
+- Times are estimates: Claude does not announce how long its actions take.
 
 ## Development
-
-Each mod is a standalone folder (`.claude-plugin/plugin.json`, `hooks/register.tsx`, `types/index.d.ts`, `tests/`).
 
 ```bash
 claude plugin validate ./radar
 claude plugin test ./radar
-claude --plugin-dir ./radar --plugin-dir ./aiblueprint
+claude --plugin-dir ./radar
 ```
 
 ## License

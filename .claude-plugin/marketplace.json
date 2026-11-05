@@ -1,23 +1,18 @@
 {
-  "name": "process-context",
+  "name": "radar",
   "owner": {
     "name": "GOLGOT55",
     "url": "https://github.com/GOLGOT55"
   },
   "metadata": {
-    "description": "Two Claude Code mods: Radar (what Claude is doing, live) and Context (context, usage limits and tokens saved).",
-    "version": "1.2.0"
+    "description": "Radar: one Claude Code mod that shows what Claude is doing, live, plus context, usage limits and an economy mode.",
+    "version": "2.0.0"
   },
   "plugins": [
     {
       "name": "radar",
       "source": "./radar",
-      "description": "Right-hand panel: Claude actions by category with estimated times, details, files touched, safety guard and economy mode."
-    },
-    {
-      "name": "aiblueprint",
-      "source": "./aiblueprint",
-      "description": "Context card above the prompt: context used, cost, 5-hour and weekly limits, and tokens saved by the economy mode."
+      "description": "Right-hand panel (plan, actions, files, safety guard), Context card above the prompt (context, cost, 5-hour and weekly limits, tokens saved) and economy mode (short answers, minimal code, auto-compaction at 400k, smart skills)."
     }
   ]
 }
