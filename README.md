@@ -73,6 +73,7 @@ Bouton **⚙** (masqué par défaut, **Masquer** pour le refermer) :
 - Fond : carte, noir, ardoise, transparent
 - Largeur : étroite, normale, large
 - Afficher ou non : résumé, plan, historique, temps, fichiers
+- Catégories : cocher ou décocher Lecture, Recherche, Web, Modifications, Commandes, Agents, Autre pour les afficher ou les masquer
 - Garde-fou : actif ou désactivé
 
 Les réglages sont gardés pour toutes les sessions.

@@ -55,7 +55,7 @@ test('le panneau à droite suit les actions et se personnalise', async ($, on) =
   expect(await ui.find({ type: 'Text', text: /^PROGRESS$/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /Effacer/ })).toBeUndefined()
   await ui.press({ key: 'eye' })
-  expect(await ui.find({ type: 'Button', text: /Lecture/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -268,4 +268,23 @@ test('éditeur : si l’app refuse les fenêtres, les fichiers s’ouvrent en on
   expect(await ui.find({ type: 'Button', key: 'ft:/src/b.ts' })).toBeUndefined()
   await ui.unmount()
   placed = true
+})
+
+test('⚙ Catégories : masquer une catégorie, puis la remettre', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/src/a.ts' })
+  await $.tool.call({ tool: 'Grep', pattern: 'x', path: '/src' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeDefined()
+  await ui.press({ key: 'gear' })
+  await ui.press({ key: 'cat-show:Lecture' })
+  expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'cat:Recherche' })).toBeDefined()
+  expect((stored.prefs as { hiddenCats: string[] }).hiddenCats).toEqual(['Lecture'])
+  await ui.press({ key: 'cat-show:Lecture' })
+  expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeDefined()
+  await ui.unmount()
 })

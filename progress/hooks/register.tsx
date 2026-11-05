@@ -623,6 +623,10 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
     section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps'), toggleChip('showFiles', 'Fichiers')]),
+    section('s-cats', 'Catégories', ORDER.map(cat => {
+      const isOn = !(p.hiddenCats ?? []).includes(cat)
+      return chip('cat-show:' + cat, `${isOn ? '✓' : '+'} ${cat}`, isOn, () => pick(x => ({ ...x, hiddenCats: toggle(x.hiddenCats ?? [], cat) })))
+    })),
     section('s-guard', 'Garde-fou', [chip('guard:toggle', p.guard !== false ? '✓ Actif' : '+ Désactivé', p.guard !== false, () => pick(x => ({ ...x, guard: x.guard === false })))]),
   ])
   if (v.hidden) return <Box flexDirection="column" gap="sm">{header}{settings}</Box>
@@ -675,7 +679,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   const shown = p.showHistory ? list : running
-  const groups = ORDER.map(cat => ({ cat, items: shown.filter(c => c.category === cat) })).filter(g => g.items.length)
+  const groups = ORDER.map(cat => ({ cat, items: shown.filter(c => c.category === cat) })).filter(g => g.items.length && !(p.hiddenCats ?? []).includes(g.cat))
   // Temps total de toutes les actions : restant pendant le travail, passé une fois tout fini.
   const spent = shown.reduce((s, c) => s + (c.endedAt !== undefined ? c.endedAt - c.startedAt : 0), 0)
   const actionsCard = card('actions', [
