@@ -264,3 +264,44 @@ test('compactage à la fin de la réponse à 561k (contexte donné seulement en 
   await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't' } as never)
   expect(compacts).toBe(1) // tout de suite, sans attendre
 })
+
+test('chaque réglage de ⚙ : appliqué, gardé, et l’affichage ne casse pas', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept: Record<string, unknown> = {}
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('session.usage', () => ({ value: USAGE }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+  const prefs = () => kept.prefs as Record<string, unknown>
+  const CHOICES: Record<string, string[]> = {
+    gauge: ['segments', 'ring', 'none', 'line'],
+    numbers: ['tokens', 'percent', 'both'],
+    density: ['compact', 'comfort'],
+    background: ['none', 'card'],
+  }
+  const ACCENTS: Record<string, string> = { Turquoise: '#2dd4bf', Bleu: '#60a5fa', Rose: '#f472b6', Orange: '#fb923c', Citron: '#a3e635', Blanc: '#e5e7eb' }
+
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await mountBand($, surface)
+    // ⚙ peut être resté ouvert depuis l'autre surface : on ne l'ouvre que s'il est fermé.
+    if (!(await ui.find({ type: 'Button', key: 'toggle-showContext' }))) await ui.press({ key: 'gear' })
+    for (const field of ['showContext', 'showCostTime', 'showFiveHour', 'showWeek', 'showPace', 'showReset', 'showEconomy']) {
+      const before = (prefs()?.[field] ?? true) as boolean
+      await ui.press({ key: `toggle-${field}` }); expect(prefs()[field]).toBe(!before)
+      await ui.press({ key: `toggle-${field}` }); expect(prefs()[field]).toBe(before)
+    }
+    for (const [field, values] of Object.entries(CHOICES)) {
+      for (const v of values) { await ui.press({ key: `${field}-${v}` }); expect(prefs()[field]).toBe(v) }
+    }
+    for (const [label, hex] of Object.entries(ACCENTS)) { await ui.press({ key: `accent-${label}` }); expect(prefs().accent).toBe(hex) }
+    // Case du mode économe : coupe puis remet.
+    await ui.press({ key: 'eco-toggle' }); expect(prefs().economy).toBe(false)
+    await ui.press({ key: 'eco-toggle' }); expect(prefs().economy).toBe(true)
+    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#2dd4bf')
+    expect(await ui.find({ type: 'Text', text: /5h/i })).toBeDefined() // l'affichage est toujours là
+    await ui.unmount()
+  }
+})

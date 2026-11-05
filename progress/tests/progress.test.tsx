@@ -378,3 +378,43 @@ test('l’app se reconnecte (redémarrage, bouton stop) : le panneau se rouvre t
   await settle()
   expect(opened.length).toBeGreaterThan(before)
 })
+
+test('chaque réglage de ⚙ : appliqué, gardé, et l’affichage ne casse pas', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items: [{ content: 'Un', status: 'completed' }] })
+  await $.tool.call({ tool: 'Read', file_path: '/src/a.ts' })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/a.ts', old_string: 'x', new_string: 'y' })
+  const prefs = () => stored.prefs as Record<string, unknown>
+  const COLORS: Record<string, string> = { Bleu: '#60a5fa', Vert: '#4ade80', Violet: '#c084fc', Orange: '#fb923c', Rose: '#f472b6', Gris: '#a1a1aa' }
+
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.press({ key: 'gear' })
+    for (const [name, hex] of Object.entries(COLORS)) {
+      await ui.press({ key: 'color:' + name }); expect(prefs().accent).toBe(hex)
+      await ui.press({ key: 'check:' + name }); expect(prefs().checkColor).toBe(hex)
+      await ui.press({ key: 'time:' + name }); expect(prefs().timeColor).toBe(hex)
+    }
+    for (const g of ['Segments', 'Anneau', 'Aucune', 'Ligne']) { await ui.press({ key: 'gauge:' + g }); expect(prefs().gauge).toBe(g) }
+    for (const b of ['Noir', 'Ardoise', 'Transparent', 'Carte']) { await ui.press({ key: 'bg:' + b }); expect(prefs().background).toBe(b) }
+    for (const [w, n] of [['Étroite', 34], ['Large', 62], ['Normale', 46]] as const) { await ui.press({ key: 'width:' + w }); expect(prefs().width).toBe(n) }
+    for (const opt of ['showSummary', 'showPlan', 'showHistory', 'showTimes', 'showFiles']) {
+      await ui.press({ key: 'opt:' + opt }); expect(prefs()[opt]).toBe(false)
+      await ui.press({ key: 'opt:' + opt }); expect(prefs()[opt]).toBe(true)
+    }
+    for (const cat of ['Lecture', 'Recherche', 'Web', 'Modifications', 'Commandes', 'Agents', 'Skills', 'Autre']) {
+      await ui.press({ key: 'cat-show:' + cat }); expect(prefs().hiddenCats).toContain(cat)
+      await ui.press({ key: 'cat-show:' + cat }); expect(prefs().hiddenCats).not.toContain(cat)
+    }
+    await ui.press({ key: 'guard:toggle' }); expect(prefs().guard).toBe(false)
+    await ui.press({ key: 'guard:toggle' }); expect(prefs().guard).toBe(true)
+    // ↺ Défaut remet tout ; Masquer ferme la personnalisation.
+    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#60a5fa')
+    await ui.press({ key: 'close-settings' })
+    expect(await ui.find({ type: 'Text', text: /^Personnaliser$/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeDefined() // l'affichage est toujours là
+    await ui.unmount()
+  }
+})
