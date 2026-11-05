@@ -10,6 +10,8 @@ const PANE = {
 } as const
 
 const opened: unknown[] = []
+// false = l'app refuse les fenêtres à part (seul Progress s'affiche).
+let placed = true
 const stored: Record<string, unknown> = {}
 const engine = (on: any) => {
   on('command.register', () => ({ value: { command: 'progress' } }))
@@ -20,7 +22,7 @@ const engine = (on: any) => {
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { stored[e.key] = e.value; return { value: undefined } })
   on('clock.now', () => ({ value: 1000 }))
   on('clock.every', () => ({ value: undefined }))
-  on('ui.open', (_: unknown, e: unknown) => { opened.push(e); return { value: { isPlaced: true } } })
+  on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: { isPlaced: e.id === 'progress' || placed } } })
 }
 
 test('le panneau à droite suit les actions et se personnalise', async ($, on) => {
@@ -213,30 +215,40 @@ test('garde-fou : seulement là où une commande commence, pas dans du texte', a
   expect(guardCheck('ls -la')).toBeUndefined()
 })
 
-test('éditeur : clic sur un fichier touché, contenu numéroté avec lignes changées, onglet Changements', async ($, on) => {
+test('éditeur : clic sur un fichier = sa propre fenêtre, contenu numéroté et onglet Changements', async ($, on) => {
   for (const k in stored) delete stored[k]
   opened.length = 0
+  placed = true
   engine(on)
-  on('fs.read', () => ({ value: 'const a = 1\nconst b = 2\nconst c = 3\n' }))
+  on('fs.read', (_: unknown, e: { path: string }) => ({ value: e.path.endsWith('a.ts') ? 'fichier A\n' : 'const a = 1\nconst b = 2\nconst c = 3\n' }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'const b = 0', new_string: 'const b = 2' })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/a.ts', old_string: 'x', new_string: 'fichier A' })
 
-  // Clic sur le nom : l'éditeur s'affiche dans Progress.
+  // Un clic par fichier : une fenêtre chacun, Progress reste tel quel.
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'f:/src/app.ts' })
-  expect(await ui.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
-  await ui.press({ key: 'tab:diff' })
-  expect(await ui.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
-  await ui.press({ key: 'back' })
+  await ui.press({ key: 'f:/src/a.ts' })
   expect(await ui.find({ type: 'Text', text: /Fichiers touchés/i })).toBeDefined()
   await ui.unmount()
+  const ids = opened.map(o => (o as { id: string }).id).filter(id => id.startsWith('pf-'))
+  expect(new Set(ids).size).toBe(2)
+
+  const w = await $.ui.mount({ ...PANE, requestId: ids[0]!, props: { ...PANE.props, bodyColumns: 90 }, surface: 'desktop' })
+  expect(await w.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
+  expect(await w.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
+  await w.press({ key: 'tab:diff' })
+  expect(await w.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
+  await w.unmount()
+  const w2 = await $.ui.mount({ ...PANE, requestId: ids[1]!, props: { ...PANE.props, bodyColumns: 90 }, surface: 'desktop' })
+  expect(await w2.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
+  await w2.unmount()
 })
 
-test('éditeur : plusieurs fichiers en onglets, et une fenêtre à part par fichier', async ($, on) => {
+test('éditeur : si l’app refuse les fenêtres, les fichiers s’ouvrent en onglets dans Progress', async ($, on) => {
   for (const k in stored) delete stored[k]
   opened.length = 0
+  placed = false
   engine(on)
   on('fs.read', (_: unknown, e: { path: string }) => ({ value: e.path.endsWith('a.ts') ? 'fichier A\n' : 'fichier B\n' }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -245,31 +257,15 @@ test('éditeur : plusieurs fichiers en onglets, et une fenêtre à part par fich
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'f:/src/a.ts' })
+  expect(await ui.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
   await ui.press({ key: 'back' })
   await ui.press({ key: 'f:/src/b.ts' })
-  // Deux onglets ouverts, B affiché ; clic sur l'onglet A.
   expect(await ui.find({ type: 'Button', key: 'ft:/src/a.ts' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /fichier B/ })).toBeDefined()
   await ui.press({ key: 'ft:/src/a.ts' })
   expect(await ui.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
-
-  // Une fenêtre à part pour A, puis une autre pour B : deux fenêtres différentes.
-  await ui.press({ key: 'pop' })
-  await ui.press({ key: 'ft:/src/b.ts' })
-  await ui.press({ key: 'pop' })
-  const ids = opened.map(o => (o as { id: string }).id).filter(id => id.startsWith('pf-'))
-  expect(new Set(ids).size).toBe(2)
-
-  // ✕ ferme l'onglet B ; A reste.
   await ui.press({ key: 'fc:/src/b.ts' })
   expect(await ui.find({ type: 'Button', key: 'ft:/src/b.ts' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
   await ui.unmount()
-
-  // Chaque fenêtre montre son propre fichier.
-  for (const [id, text] of [[ids[0], /fichier A/], [ids[1], /fichier B/]] as const) {
-    const w = await $.ui.mount({ ...PANE, requestId: id!, props: { ...PANE.props, bodyColumns: 90 }, surface: 'desktop' })
-    expect(await w.find({ type: 'Text', text })).toBeDefined()
-    await w.unmount()
-  }
+  placed = true
 })

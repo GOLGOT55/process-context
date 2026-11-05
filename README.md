@@ -51,11 +51,10 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
-- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre l'**éditeur** dans le panneau Progress :
+- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre le fichier dans **sa propre fenêtre d'éditeur** (une par fichier, autant que tu veux) :
   - onglet **Contenu** : le fichier numéroté, les lignes changées par Claude surlignées en vert ;
   - onglet **Changements** : chaque modification, lignes retirées en rouge (−) et ajoutées en vert (+) ;
-  - **plusieurs fichiers** : chaque fichier cliqué s'ajoute en onglet (clic pour passer de l'un à l'autre, ✕ pour fermer) ;
-  - **↗ Ouvrir à part** ouvre le fichier dans sa propre fenêtre, une par fichier, autant que tu veux ; **← Retour** revient à Progress.
+  - si l'app refuse les fenêtres à part, les fichiers s'ouvrent en **onglets** dans Progress (clic pour passer de l'un à l'autre, ✕ pour fermer, **← Retour** pour revenir).
 - **Garde-fou** (activable/désactivable dans ⚙) : avant une commande risquée, une fenêtre demande Autoriser ou Refuser :
   - suppression récursive (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) ;
   - suppression dans tes dossiers Jeux ou Cerveau ;

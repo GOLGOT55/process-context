@@ -178,7 +178,7 @@ async function popOutFile($: EngineInterface, path: string, tab: FileView['tab']
   const id = paneId(path)
   await update($, popped, l => [...l.filter(x => x.id !== id), { id, path, tab }].slice(-20))
   const { isPlaced } = await $.ui.open({ id, title: base(path), columns: 90, focus: true })
-  if (!isPlaced) $.ui.toast('La fenêtre à part ne peut pas s’ouvrir ici : le fichier reste dans Progress.')
+  if (!isPlaced) await openFile($, path) // fenêtre refusée par l'app : on l'affiche dans Progress à la place
 }
 
 // paneReq = id de la fenêtre à part, ou undefined pour l'éditeur dans Progress.
@@ -763,8 +763,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
             <Box flexGrow={1} flexShrink={1} minWidth={0}>
               <Box flexDirection="row" alignItems="center" gap="xs">
                 <Button key={'fx:' + f.path} plain dimColor label={isDetail ? '▾' : '▸'} onPress={() => set(x => ({ ...x, opened: toggle(x.opened, 'f:' + f.path) }))} />
-                {/* Clic sur le nom : ouvre le fichier dans le panneau éditeur. */}
-                <Button key={'f:' + f.path} plain onPress={() => void openFile($, f.path).catch(() => {})}>
+                {/* Clic sur le nom : ouvre le fichier dans sa propre fenêtre (dans Progress si l'app refuse). */}
+                <Button key={'f:' + f.path} plain onPress={() => void popOutFile($, f.path, 'code').catch(() => openFile($, f.path))}>
                   <Text wrap="truncate-end"><Text color={ACCENT}>{f.written ? '✚' : '✎'}</Text> {base(f.path)} <Text dimColor>↗</Text></Text>
                 </Button>
               </Box>
