@@ -296,17 +296,18 @@ async function refresh($: EngineInterface): Promise<void> {
 function basePrefs(options: Options): Prefs {
   return {
     showContext: true,
-    showCostTime: options.showSession,
+    showCostTime: options.showSession, // coût & temps affichés par défaut
     showFiveHour: options.showFiveHour,
     showWeek: options.showWeek,
     showPace: options.showPace,
     showReset: options.showReset,
     showEconomy: true,
     gauge: options.showBars ? 'line' : 'none',
-    accent: ACCENTS[0].value,
+    // Par défaut = les réglages de Ruben : bleu, compact, sans fond.
+    accent: '#60a5fa',
     numbers: 'both',
-    density: 'comfort',
-    background: 'card',
+    density: 'compact',
+    background: 'none',
   }
 }
 

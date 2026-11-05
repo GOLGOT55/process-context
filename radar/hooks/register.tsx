@@ -17,7 +17,8 @@ export const BACKGROUNDS: Record<string, { bg: string; border: string } | null> 
   Ardoise: { bg: '#1b2030', border: '#2c3447' },
   Transparent: null,
 }
-const DEFAULT_PREFS: Prefs = { accent: COLORS.Bleu!, width: WIDTHS.Normale!, showPlan: true, showHistory: true, showTimes: true, background: 'Carte' }
+// Réglages par défaut = ceux choisis par Ruben (gris, large, transparent, segments).
+const DEFAULT_PREFS: Prefs = { accent: COLORS.Gris!, width: WIDTHS.Large!, showPlan: true, showHistory: true, showTimes: true, background: 'Transparent', gauge: 'Segments' }
 const prefs = atom({ plugin: 'radar', key: 'prefs' } as const, DEFAULT_PREFS, { shape: 'prefs-2' })
 const calls = atom({ plugin: 'radar', key: 'calls' } as const, [], { shape: 'calls-2' })
 const plan = atom({ plugin: 'radar', key: 'plan' } as const, [], { shape: 'plan-1' })
@@ -487,17 +488,44 @@ export async function setEconome($: EngineInterface, isOn: boolean) {
 // ---------- Compactage automatique (mode économe) ----------
 // Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
 let isCompacting = false
-// Taille du contexte en tokens ; le moteur donne parfois seulement le pourcentage.
+// Seuils proposés dans ⚙ ; 400k recommandé (assez de place pour travailler, compactage avant que ça ralentisse).
+export const COMPACT_CHOICES = [200_000, 300_000, 400_000, 500_000]
+
+// Taille du contexte en tokens, que le moteur la donne en chiffre (tokens) ou seulement en pourcentage de la fenêtre.
+export function contextTokens(c: { tokens?: number; percent?: number; window?: number }) {
+  if (typeof c.tokens === 'number' && c.tokens > 0) return c.tokens
+  return Math.round(((c.percent ?? 0) / 100) * (c.window || 1_000_000))
+}
+
 async function contextNow($: EngineInterface) {
   const c = (await $.session.usage().catch(() => undefined))?.context
-  if (!c) return 0
-  return c.tokens ?? Math.round(((c.percent ?? 0) / 100) * c.window)
+  return c ? contextTokens(c) : 0
+}
+
+async function compactAt($: EngineInterface) {
+  const at = ((await $.store.get('prefs').catch(() => undefined)) as Partial<Prefs> | undefined)?.compactAt
+  return at && COMPACT_CHOICES.includes(at) ? at : COMPACT_AT
+}
+
+// Claude Code compacte aussi de lui-même, mais en pourcentage de la fenêtre : on convertit le seuil choisi
+// (ex. 300k sur 1M = 30) dans ~/.claude/settings.json, pour qu'il suive le même choix entre deux messages.
+async function syncNativeCompact($: EngineInterface, at: number) {
+  const home = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '~'}/.claude`
+  const path = `${home}/settings.json`
+  const text = await $.fs.read(path).catch(() => undefined)
+  let settings: { env?: Record<string, string> }
+  try { settings = typeof text === 'string' ? JSON.parse(text) : {} } catch { return } // fichier illisible : on n'y touche pas
+  const window = (await $.session.usage().catch(() => undefined))?.context?.window || 1_000_000
+  const pct = String(Math.max(1, Math.min(100, Math.round((at / window) * 100))))
+  if (settings.env?.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === pct) return
+  settings.env = { ...settings.env, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: pct }
+  await $.fs.write(path, `${JSON.stringify(settings, null, 2)}\n`).catch(() => {})
 }
 
 async function autoCompact($: EngineInterface) {
   if (isCompacting) return
   const tokens = await contextNow($)
-  if (tokens < COMPACT_AT) return
+  if (tokens < (await compactAt($))) return
   isCompacting = true
   const done = (skip?: string) => {
     if (!skip) $.ui.toast(`Contexte à ${Math.round(tokens / 1000)}k tokens : conversation compactée pour économiser.`)
@@ -807,7 +835,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
           ? <Box flexDirection="row" alignItems="center" gap="sm"><Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · <Text color={TIME}>~{fmt(total)}</Text></Text>{gauge('g-total', runRatio, TITLE_W)}</Box>
           : <Text weight="semibold">{list.length ? `Terminé · ${list.length} action${list.length > 1 ? 's' : ''}` : 'Prêt'}</Text>}
         {list.length > 0 && tally}
-        {p.econome !== false && <Text key="eco" size="footnote" dimColor wrap="truncate-end"><Text color={CHECK}>◆</Text> Économe · compactage auto à {COMPACT_AT / 1000}k{skillCount ? ` · ${skillCount} skills rangés` : ''}</Text>}
+        {p.econome !== false && <Text key="eco" size="footnote" dimColor wrap="truncate-end"><Text color={CHECK}>◆</Text> Économe · compactage auto à {(p.compactAt ?? COMPACT_AT) / 1000}k{skillCount ? ` · ${skillCount} skills rangés` : ''}</Text>}
       </Box>
       {buttons}
     </Box>,
@@ -856,6 +884,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     })),
     section('s-guard', 'Garde-fou', [chip('guard:toggle', p.guard !== false ? '✓ Actif' : '+ Désactivé', p.guard !== false, () => pick(x => ({ ...x, guard: x.guard === false })))]),
     section('s-eco', 'Économe', [chip('eco:toggle', p.econome !== false ? '✓ Actif' : '+ Désactivé', p.econome !== false, () => pick(x => ({ ...x, econome: x.econome === false })))]),
+    section('s-compact', 'Compacter à', COMPACT_CHOICES.map(at => chip('compact:' + at, at === COMPACT_AT ? `${at / 1000}k ★ recommandé` : `${at / 1000}k`, (p.compactAt ?? COMPACT_AT) === at,
+      () => { pick(x => ({ ...x, compactAt: at })); void syncNativeCompact($, at).catch(() => {}) }))),
   ])
   if (v.hidden) return <Box flexDirection="column" gap="sm">{header}{settings}</Box>
 

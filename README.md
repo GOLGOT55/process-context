@@ -60,7 +60,7 @@ claude plugin uninstall progress; claude plugin uninstall aiblueprint
   - if the app refuses separate windows, files open as tabs inside Radar.
 - **Guard** (on/off in ⚙): before a risky command (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`) a dialog asks Allow or Deny. Wiping or formatting a drive is always denied. Only real commands count, not text that mentions them.
 
-**⚙** settings: color, color of ✓ and times, gauge (line, segments, ring, none — shown right of the titles, visible when folded), background, width, what to show, each category, guard, economy mode. Kept for all sessions.
+**⚙** settings (defaults: gray, wide, transparent, segment gauges): color, color of ✓ and times, gauge (line, segments, ring, none — shown right of the titles, visible when folded), background, width, what to show, each category, guard, economy mode. Kept for all sessions.
 
 ## Context card
 
@@ -68,7 +68,7 @@ claude plugin uninstall progress; claude plugin uninstall aiblueprint
 - **Cost & time** of the session.
 - **80% alert**: one notification per window and a ⚠ when the 5-hour limit passes 80%.
 - Shows from the start of a conversation, with the last known limits; 0% when nothing is measured yet.
-- **⚙** to choose what shows, gauge style, color, size and background. Also in Claude Code settings (`pluginConfigs`).
+- **⚙** to choose what shows, gauge style, color, size and background (defaults: blue, compact, no background, cost & time and tokens saved shown). Also in Claude Code settings (`pluginConfigs`).
 
 ## Economy mode
 
@@ -81,8 +81,7 @@ On by default; the ☑ box on the Context card and ⚙ in Radar turn it on or of
 About 700 tokens per request, cached by the API. Security warnings, questions and anything written to files stay in full sentences.
 
 - **Tokens saved** (Context card): output tokens written with the mode × 40% ÷ 60% (an average rate, not a measure), shown as "~4.1K" and kept per session.
-- **Auto-compaction at 400k tokens.** For Claude Code to do it itself even when the app restarts its process between messages, add to `~/.claude/settings.json`:
-  `"env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40" }` (40% of a 1M window = 400k).
+- **Auto-compaction**: choose the threshold in ⚙ → *Compact at*: 200k, 300k, **400k (default, recommended)** or 500k tokens of context. Radar reads the context size whether Claude Code reports it in tokens or only as a percentage of the window. Picking a threshold also sets Claude Code's own auto-compaction (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` in `~/.claude/settings.json`, converted to a percentage, e.g. 400k of 1M = 40) so it follows the same choice between messages.
 
 ## Limits
 

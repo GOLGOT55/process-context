@@ -420,7 +420,7 @@ test('chaque réglage de ⚙ : appliqué, gardé, et l’affichage ne casse pas'
     await ui.press({ key: 'guard:toggle' }); expect(prefs().guard).toBe(false)
     await ui.press({ key: 'guard:toggle' }); expect(prefs().guard).toBe(true)
     // ↺ Défaut remet tout ; Masquer ferme la personnalisation.
-    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#60a5fa')
+    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#a1a1aa') // défaut = gris (réglage de Ruben)
     await ui.press({ key: 'close-settings' })
     expect(await ui.find({ type: 'Text', text: /^Personnaliser$/ })).toBeUndefined()
     expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeDefined() // l'affichage est toujours là

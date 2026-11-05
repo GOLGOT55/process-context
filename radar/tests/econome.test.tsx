@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { buildSkillIndex, categorize, parseSkill } from '../hooks/econome.js'
+import { contextTokens } from '../hooks/register.js'
 
 const NOW = Date.parse('2026-10-05T01:00:00Z')
 const USAGE = { startedAt: NOW - 60_000, context: { tokens: 166_000, window: 1_000_000, percent: 16.6 }, rateLimits: [], cost: { usd: 1 } }
@@ -37,6 +38,40 @@ test('compactage aussi quand le contexte n’est donné qu’en pourcentage (561
   on('session.compact', () => { compacts++; return { skip: 'test' } as never })
   await $.turn.complete(done)
   expect(compacts).toBe(1)
+})
+
+test('taille du contexte : en chiffre ou en pourcentage, fenêtre absente = 1M', () => {
+  expect(contextTokens({ tokens: 350_000, percent: 1, window: 1_000_000 })).toBe(350_000) // le chiffre prime
+  expect(contextTokens({ percent: 30, window: 1_000_000 })).toBe(300_000)
+  expect(contextTokens({ tokens: 0, percent: 40, window: 200_000 })).toBe(80_000)
+  expect(contextTokens({ percent: 45 })).toBe(450_000)
+})
+
+test('seuil choisi dans ⚙ (200k–500k) : compacte au bon moment et règle Claude Code en pourcentage', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const kept: Record<string, unknown> = {}
+  let compacts = 0
+  let written = ''
+  base(on, kept)
+  on('env.get', (_: unknown, e: { name: string }) => ({ value: e.name === 'USERPROFILE' ? 'C:/u' : undefined }) as never)
+  on('fs.read', () => ({ value: '{ "env": { "X": "1" } }' }) as never)
+  on('fs.write', (_: unknown, e: { path: string; content?: string; text?: string; data?: string }) => { written = String(e.content ?? e.text ?? e.data ?? ''); return { value: undefined } as never })
+  let pct = 25 // 250k, donné seulement en pourcentage
+  on('session.usage', () => ({ value: { ...USAGE, context: { window: 1_000_000, percent: pct } } }) as never)
+  on('session.compact', () => { compacts++; return { skip: 'test' } as never })
+  await $.turn.complete(done)
+  expect(compacts).toBe(0) // 250k < 400k (défaut)
+
+  const ui = await $.ui.mount({ plugin: 'radar', surface: 'desktop', component: 'Pane', requestId: 'radar', props: { title: 'Radar', isFocused: false, bodyColumns: 46, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } } as never)
+  await ui.press({ key: 'gear' })
+  expect((await ui.find({ type: 'Button', key: 'compact:400000' }))?.text).toContain('recommandé')
+  await ui.press({ key: 'compact:200000' })
+  await new Promise(r => (globalThis as unknown as { setTimeout: (f: () => void, ms: number) => void }).setTimeout(() => r(undefined), 20))
+  expect((kept.prefs as { compactAt: number }).compactAt).toBe(200_000)
+  expect(JSON.parse(written)).toEqual({ env: { X: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '20' } }) // 200k / 1M = 20 %
+  await $.turn.complete(done)
+  expect(compacts).toBe(1) // 250k ≥ 200k
+  await ui.unmount()
 })
 
 test('mode économe désactivé dans ⚙ : ni compactage ni règles dans le prompt', async ($, on) => {

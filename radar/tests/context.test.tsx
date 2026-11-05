@@ -238,7 +238,7 @@ test('chaque réglage de ⚙ : appliqué, gardé, et l’affichage ne casse pas'
     // Case du mode économe : coupe puis remet.
     await ui.press({ key: 'eco-toggle' }); expect((kept.prefs as { econome: boolean }).econome).toBe(false)
     await ui.press({ key: 'eco-toggle' }); expect((kept.prefs as { econome: boolean }).econome).toBe(true)
-    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#2dd4bf')
+    await ui.press({ key: 'reset' }); expect(prefs().accent).toBe('#60a5fa') // défaut = bleu (réglage de Ruben)
     expect(await ui.find({ type: 'Text', text: /5h/i })).toBeDefined() // l'affichage est toujours là
     await ui.unmount()
   }

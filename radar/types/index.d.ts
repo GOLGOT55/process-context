@@ -34,7 +34,7 @@ export type EditDraft = { path: string; draft: string; original: string; error?:
 export type GuardEntry = { at: number; command: string; reason: string; decision: 'autorisée' | 'refusée' | 'bloquée' }
 
 // Réglages de la fenêtre, gardés d'une session à l'autre (copiés dans $.store).
-export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean; guard?: boolean; econome?: boolean; hiddenCats?: string[] }
+export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean; guard?: boolean; econome?: boolean; hiddenCats?: string[]; compactAt?: number }
 
 // ----- Carte Contexte (au-dessus de la saisie) -----
 export type CtxLimit = { percent: number; pace?: number; resetsInMs?: number }
