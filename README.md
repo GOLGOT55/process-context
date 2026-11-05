@@ -51,7 +51,9 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
-- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total ; un clic montre le chemin, le nombre de modifications et le dernier changement.
+- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre le fichier dans un **panneau éditeur** :
+  - onglet **Contenu** : le fichier numéroté, les lignes changées par Claude surlignées en vert ;
+  - onglet **Changements** : chaque modification, lignes retirées en rouge (−) et ajoutées en vert (+).
 - **Garde-fou** (activable/désactivable dans ⚙) : avant une commande risquée, une fenêtre demande Autoriser ou Refuser :
   - suppression récursive (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) ;
   - suppression dans tes dossiers Jeux ou Cerveau ;

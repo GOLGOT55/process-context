@@ -128,7 +128,7 @@ test('fichiers touchés : +/− par fichier, détail au clic, gardés d’une de
   expect(await ui.find({ type: 'Text', text: /Fichiers touchés · 2/i })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^\+4$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^−3$/ })).toBeDefined()
-  await ui.press({ key: 'f:/src/app.ts' })
+  await ui.press({ key: 'fx:/src/app.ts' })
   expect(await ui.find({ type: 'Text', text: /Modifs\s+2/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^\+  y$/ })).toBeDefined()
   await ui.press({ key: 'gear' })
@@ -173,4 +173,26 @@ test('garde-fou : confirmation, refus, blocage direct, carte et interrupteur', a
   const off = await $.tool.call({ tool: 'Bash', command: 'git reset --hard' })
   expect('deny' in off).toBe(false)
   expect(asked.length).toBe(2)
+})
+
+test('éditeur : clic sur un fichier touché, contenu numéroté avec lignes changées, onglet Changements', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  opened.length = 0
+  engine(on)
+  on('fs.read', () => ({ value: 'const a = 1\nconst b = 2\nconst c = 3\n' }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'const b = 0', new_string: 'const b = 2' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'f:/src/app.ts' })
+  expect(opened.some(o => (o as { id: string }).id === 'progress-file')).toBe(true)
+  await ui.unmount()
+
+  const ed = await $.ui.mount({ ...PANE, requestId: 'progress-file', props: { ...PANE.props, title: 'app.ts', bodyColumns: 90 }, surface: 'desktop' })
+  expect(await ed.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
+  expect(await ed.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
+  await ed.press({ key: 'tab:diff' })
+  expect(await ed.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
+  expect(await ed.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
+  await ed.unmount()
 })

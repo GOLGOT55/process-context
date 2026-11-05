@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, RenderInput, Timer } from 'claude-code'
 
-import type { Call, FileTouch, GuardEntry, Prefs, Step, View } from '../types'
+import type { Call, FileChange, FileTouch, GuardEntry, Prefs, Step, View } from '../types'
 
 const PANE = 'progress'
 export const COLORS: Record<string, string> = {
@@ -26,7 +26,7 @@ const view = atom(
 )
 const now = atom({ plugin: 'progress', key: 'now' } as const, 0)
 // Fichiers modifiés pendant toute la conversation (pas vidés à chaque demande).
-const files = atom({ plugin: 'progress', key: 'files' } as const, [], { shape: 'files-1' })
+const files = atom({ plugin: 'progress', key: 'files' } as const, [], { shape: 'files-2' })
 const FILE_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'MultiEdit']
 // Ce que le garde-fou a demandé ou bloqué pendant la conversation.
 const guard = atom({ plugin: 'progress', key: 'guard' } as const, [], { shape: 'guard-1' })
@@ -127,6 +127,86 @@ export function guardCheck(command: string): { reason: string; block?: true } | 
   return GUARD_RULES.find(r => r.re.test(command))
 }
 
+// ----- Éditeur : le fichier ouvert dans son propre panneau -----
+const EDITOR = 'progress-file'
+const fileView = atom({ plugin: 'progress', key: 'fileView' } as const, { path: '', tab: 'code' })
+const MAX_LINES = 1500 // au-delà, le panneau deviendrait lourd
+
+// Numéros (base 0) des lignes du fichier qui viennent des changements de Claude.
+export function changedLines(content: string, changes: FileChange[]): Set<number> {
+  const out = new Set<number>()
+  const total = content.split('\n').length
+  for (const c of changes) {
+    if (c.whole) { for (let i = 0; i < total; i++) out.add(i); continue }
+    const at = c.new ? content.indexOf(c.new) : -1
+    if (at < 0) continue // texte déjà remplacé par une modif plus récente
+    const start = content.slice(0, at).split('\n').length - 1
+    c.new.split('\n').forEach((_, i) => out.add(start + i))
+  }
+  return out
+}
+
+async function openFile($: EngineInterface, path: string) {
+  await update($, fileView, v => ({ path, tab: v.path === path ? v.tab : 'code' }))
+  await $.ui.open({ id: EDITOR, title: base(path), columns: 90 })
+}
+
+async function editorBody($: EngineInterface, e: RenderInput<'Pane'>) {
+  const { Box, Text, Button } = $.ui.resolve(e)
+  const [fv, list, p] = [await read($, fileView), await read($, files), await read($, prefs)]
+  const f = list.find(x => x.path === fv.path)
+  if (!fv.path || !f) return <Text dimColor>Clique sur un fichier dans Progress → Fichiers touchés pour l'ouvrir ici.</Text>
+  const CHECK = p.checkColor ?? GREEN
+  const ADD_BG = '#12301f'
+  const DEL_BG = '#3a1717'
+  const setTab = (tab: 'code' | 'diff') => void update($, fileView, v => ({ ...v, tab }))
+  const tab = (key: 'code' | 'diff', label: string) => (
+    <Button key={'tab:' + key} label={label} variant={fv.tab === key ? 'primary' : 'secondary'} dimColor={fv.tab !== key} onPress={() => setTab(key)} />
+  )
+  const header = (
+    <Box key="head" flexDirection="column" gap="xs" paddingX="md" paddingY="sm" borderStyle="round" borderColor="#232833" backgroundColor="#121419">
+      <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap="sm">
+        <Text weight="semibold" wrap="truncate-end">{f.written ? '✚' : '✎'} {base(f.path)}</Text>
+        <Text size="footnote" tabular><Text color={CHECK}>+{f.added}</Text> <Text color={RED}>−{f.removed}</Text> <Text dimColor>· {f.edits} modif{f.edits > 1 ? 's' : ''}</Text></Text>
+      </Box>
+      <Text size="footnote" dimColor mono wrap="truncate-middle">{f.path}</Text>
+      <Box flexDirection="row" gap="sm">{tab('code', 'Contenu')}{tab('diff', 'Changements')}</Box>
+    </Box>
+  )
+  const codeLine = (key: string, num: string, text: string, bg?: string, sign = ' ') => (
+    <Text key={key} mono size="footnote" wrap="truncate-end" {...(bg ? { backgroundColor: bg } : {})}>
+      <Text dimColor>{num} </Text><Text color={bg === ADD_BG ? CHECK : bg === DEL_BG ? RED : 'gray'}>{sign}</Text> {text.replace(/\t/g, '  ') || ' '}
+    </Text>
+  )
+
+  if (fv.tab === 'diff') {
+    const blocks = f.changes.map((c, i) => (
+      <Box key={'chg' + i} flexDirection="column" gap={0} paddingY="xs">
+        <Text size="caption" dimColor weight="medium">{c.whole ? `MODIFICATION ${i + 1} · FICHIER ÉCRIT EN ENTIER` : `MODIFICATION ${i + 1}`}</Text>
+        {!c.whole && c.old.split('\n').map((l, j) => codeLine('o' + j, String(j + 1).padStart(3), l, DEL_BG, '−'))}
+        {!c.whole && c.new.split('\n').map((l, j) => codeLine('n' + j, String(j + 1).padStart(3), l, ADD_BG, '+'))}
+      </Box>
+    ))
+    return <Box flexDirection="column" gap="sm">{header}{blocks}</Box>
+  }
+
+  const content = await $.fs.read(f.path).catch(() => undefined)
+  if (typeof content !== 'string') return <Box flexDirection="column" gap="sm">{header}<Text color={RED}>Fichier introuvable ou illisible (supprimé ou déplacé ?).</Text></Box>
+  const lines = content.split('\n')
+  const marked = changedLines(content, f.changes)
+  const width = String(Math.min(lines.length, MAX_LINES)).length
+  return (
+    <Box flexDirection="column" gap="sm">
+      {header}
+      <Text size="footnote" dimColor>{lines.length} lignes · <Text color={CHECK}>▌</Text> lignes changées par Claude</Text>
+      <Box flexDirection="column" gap={0}>
+        {lines.slice(0, MAX_LINES).map((l, i) => codeLine('l' + i, String(i + 1).padStart(width), l, marked.has(i) ? ADD_BG : undefined, marked.has(i) ? '+' : ' '))}
+      </Box>
+      {lines.length > MAX_LINES && <Text dimColor>… {lines.length - MAX_LINES} lignes de plus, ouvre le fichier dans ton éditeur pour la suite.</Text>}
+    </Box>
+  )
+}
+
 const lineCount = (s: string) => (s ? s.split('\n').length : 0)
 
 // Ajoute une modification réussie au fichier touché : lignes +/−, nombre de modifs, dernier aperçu.
@@ -140,10 +220,15 @@ export function touchFile(list: FileTouch[], tool: string, a: Args): FileTouch[]
   const last = isWrite
     ? [`Écrit    ${added} lignes`]
     : edits.slice(-1).flatMap(x => [...firstLines(str(x, 'old_string'), 4).map(l => '−  ' + l), ...firstLines(str(x, 'new_string') || str(x, 'new_source'), 4).map(l => '+  ' + l)])
+  // Texte brut (indentation gardée) de chaque changement, pour l'éditeur ; coupé pour rester léger.
+  const raw = (x: Args, k: string) => (typeof x[k] === 'string' ? (x[k] as string).slice(0, 6000) : '')
+  const changes: FileChange[] = isWrite
+    ? [{ old: '', new: '', whole: true }]
+    : edits.map(x => ({ old: raw(x, 'old_string'), new: raw(x, 'new_string') || raw(x, 'new_source') }))
   const prev = list.find(f => f.path === path)
   const next: FileTouch = prev
-    ? { ...prev, added: prev.added + added, removed: prev.removed + removed, edits: prev.edits + 1, last }
-    : { path, added, removed, edits: 1, last, ...(isWrite ? { written: true } : {}) }
+    ? { ...prev, added: prev.added + added, removed: prev.removed + removed, edits: prev.edits + 1, last, changes: [...prev.changes, ...changes].slice(-30) }
+    : { path, added, removed, edits: 1, last, changes, ...(isWrite ? { written: true } : {}) }
   return [...list.filter(f => f.path !== path), next].slice(-100)
 }
 
@@ -300,6 +385,8 @@ export const register: Register = on => {
 
   // Panneau à droite de la conversation (plus sous la carte Contexte).
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => body($, e))
+  // Éditeur : un fichier touché, ouvert depuis la carte Fichiers.
+  on('ui.render', { component: 'Pane', requestId: EDITOR }, async ($, e) => editorBody($, e))
 
 }
 
@@ -612,9 +699,13 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box key={'file:' + f.path} flexDirection="column" gap="xs" paddingLeft={1}>
           <Box flexDirection="row" alignItems="center" gap="sm">
             <Box flexGrow={1} flexShrink={1} minWidth={0}>
-              <Button key={'f:' + f.path} plain onPress={() => set(x => ({ ...x, opened: toggle(x.opened, 'f:' + f.path) }))}>
-                <Text wrap="truncate-end"><Text dimColor>{isDetail ? '▾' : '▸'}</Text> <Text color={ACCENT}>{f.written ? '✚' : '✎'}</Text> {base(f.path)}</Text>
-              </Button>
+              <Box flexDirection="row" alignItems="center" gap="xs">
+                <Button key={'fx:' + f.path} plain dimColor label={isDetail ? '▾' : '▸'} onPress={() => set(x => ({ ...x, opened: toggle(x.opened, 'f:' + f.path) }))} />
+                {/* Clic sur le nom : ouvre le fichier dans le panneau éditeur. */}
+                <Button key={'f:' + f.path} plain onPress={() => void openFile($, f.path).catch(() => {})}>
+                  <Text wrap="truncate-end"><Text color={ACCENT}>{f.written ? '✚' : '✎'}</Text> {base(f.path)} <Text dimColor>↗</Text></Text>
+                </Button>
+              </Box>
             </Box>
             <Box flexShrink={0}>{plusMinus('pm', f.added, f.removed)}</Box>
           </Box>
