@@ -7,6 +7,7 @@ export type Call = {
   estMs: number
   startedAt: number
   endedAt?: number
+  failed?: boolean
 }
 
 export type Step = { title: string; status: 'pending' | 'in_progress' | 'completed' }

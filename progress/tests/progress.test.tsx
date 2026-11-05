@@ -13,6 +13,7 @@ const engine = (on: any) => {
   on('command.register', () => ({ value: { command: 'progress' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
+  on('prompt.submit', (_: unknown, e: unknown) => e)
   on('store.get', (_: unknown, e: { key: string }) => ({ value: stored[e.key] }))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { stored[e.key] = e.value; return { value: undefined } })
   on('clock.now', () => ({ value: 1000 }))
@@ -52,4 +53,23 @@ test('le panneau à droite suit les actions et se personnalise', async ($, on) =
   await ui.press({ key: 'eye' })
   expect(await ui.find({ type: 'Button', text: /Lecture/ })).toBeUndefined()
   await ui.unmount()
+})
+
+test('chaque étape finie est cochée, une nouvelle demande vide l’historique', async ($, on) => {
+  for (const k in stored) delete stored[k] // réglages par défaut (le test d'avant masque le résumé)
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/src/a.ts' })
+  await $.tool.call({ tool: 'Read', file_path: '/src/b.ts' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Button', text: /a\.ts/ }))?.text).toContain('✓')
+  expect(await ui.find({ type: 'Text', text: /validée/ })).toBeDefined()
+  await ui.unmount()
+
+  await $.prompt.submit({ text: 'nouvelle demande', wait: false, origin: { kind: 'composer' } })
+  const fresh = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await fresh.find({ type: 'Button', text: /a\.ts/ })).toBeUndefined()
+  expect(await fresh.find({ type: 'Text', text: /Rien pour l'instant/ })).toBeDefined()
+  await fresh.unmount()
 })

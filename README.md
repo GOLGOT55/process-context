@@ -47,7 +47,8 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Catégories** : Lecture, Recherche, Web, Modifications, Commandes, Agents, Autre.
 - **Temps estimé** qui s'écoule pour chaque action en cours, appris à partir des durées réelles et gardé d'une session à l'autre.
 - **Détail au clic** : fichier et lignes, motif et dossier de recherche, page ou requête web, commande lancée, aperçu des modifications (−/+), fin du résultat.
-- **Historique** : les actions terminées restent affichées avec leur durée réelle.
+- **Étape par étape** : chaque action a son état, ✓ validée (vert), ● en cours, ○ en attente, ✕ échec (rouge), avec sa durée réelle une fois finie, et un bilan en haut (« ✓ 5 validées · ● 1 en cours »).
+- **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
 - Flèches ▸/▾ pour replier, œil ◉ pour réduire le panneau.
 

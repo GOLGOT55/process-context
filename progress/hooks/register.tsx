@@ -184,6 +184,12 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     await ensureOpen($).catch(() => {}) // ne bloque jamais outils ni messages
+    // Rappels automatiques (tâches de fond, déclencheurs, autres sessions) : pas une nouvelle demande.
+    if (!['composer', 'bridge', 'sdk'].includes(e.origin.kind)) return next(e)
+    // Nouvelle demande : on repart de zéro (on garde seulement ce qui tourne encore).
+    const left = await update($, calls, l => l.filter(c => c.endedAt === undefined))
+    if (left.length === 0) await update($, plan, () => [])
+    await update($, view, x => ({ ...x, opened: [], folded: [] }))
     return next(e)
   })
 
@@ -214,8 +220,9 @@ export const register: Register = on => {
 
     const endedAt = await $.clock.now()
     const tail = resultTail((ran as { result?: unknown }).result)
+    const failed = 'deny' in ran || (ran as { isError?: boolean }).isError === true
     const list = await update($, calls, l =>
-      l.map(c => (c.id === call.id ? { ...c, endedAt, detail: [...c.detail, ...tail] } : c)),
+      l.map(c => (c.id === call.id ? { ...c, endedAt, ...(failed ? { failed } : {}), detail: [...c.detail, ...tail] } : c)),
     )
     const prev = avg[e.tool] ?? { n: 0, ms: 0 }
     const n = Math.min(prev.n + 1, 20) // moyenne glissante sur ~20 appels
@@ -238,6 +245,8 @@ const ICON: Record<string, string> = {
 
 // Mêmes teintes que la carte Contexte.
 const TRACK = '#2a303a'
+const GREEN = '#4ade80'
+const RED = '#f87171'
 
 // Barre texte (terminal) qui se remplit à mesure que le temps estimé s'écoule.
 const bar = (ratio: number, width = 12) => {
@@ -288,7 +297,16 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   )
   const caption = (key: string, text: string) => <Text key={key} size="caption" dimColor weight="medium">{text.toUpperCase()}</Text>
 
-  // ----- En-tête -----
+  // ----- En-tête : bilan étape par étape -----
+  const ok = list.filter(c => c.endedAt !== undefined && !c.failed).length
+  const ko = list.filter(c => c.failed).length
+  const tally = (
+    <Box key="tally" flexDirection="row" gap="sm">
+      {ok > 0 && <Text size="footnote" color={GREEN} tabular>✓ {ok} validée{ok > 1 ? 's' : ''}</Text>}
+      {running.length > 0 && <Text size="footnote" color={ACCENT} tabular>● {running.length} en cours</Text>}
+      {ko > 0 && <Text size="footnote" color={RED} tabular>✕ {ko} échec{ko > 1 ? 's' : ''}</Text>}
+    </Box>
+  )
   const buttons = (
     <Box key="btns" flexDirection="row" gap="sm" alignItems="center">
       <Button key="gear" plain dimColor={!v.settings} label={v.settings ? '✕' : '⚙'} onPress={() => set(x => ({ ...x, settings: !x.settings }))} />
@@ -305,6 +323,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         {running.length > 0
           ? <Text weight="semibold" color={ACCENT} tabular>{running.length} en cours · ~{fmt(total)}</Text>
           : <Text weight="semibold">{list.length ? `Terminé · ${list.length} action${list.length > 1 ? 's' : ''}` : 'Prêt'}</Text>}
+        {list.length > 0 && tally}
       </Box>
       {buttons}
     </Box>,
@@ -355,8 +374,9 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>,
     gauge('g-plan', doneSteps / steps.length),
     ...steps.map((s, i) => (
-      <Text key={'step' + i} color={s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status !== 'in_progress'} strikethrough={s.status === 'completed'} wrap="truncate-end">
-        {s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}  {s.title}
+      <Text key={'step' + i} wrap="truncate-end">
+        <Text color={s.status === 'completed' ? GREEN : s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status === 'pending'}>{s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}</Text>
+        <Text color={s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status !== 'in_progress'}>  {s.title}</Text>
       </Text>
     )),
   ])
@@ -366,13 +386,16 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     const isDone = c.endedAt !== undefined
     const isDetail = v.opened.includes(c.id)
     const time = isDone ? fmt((c.endedAt ?? 0) - c.startedAt) : isNow ? fmt(left(c)) : fmt(c.estMs)
+    // ✓ validée · ✕ échec · ● en cours · ○ en attente
+    const mark = c.failed ? '✕' : isDone ? '✓' : isNow ? '●' : '○'
+    const markColor = c.failed ? RED : isDone ? GREEN : isNow ? ACCENT : 'gray'
     return (
       <Box key={'row:' + c.id} flexDirection="column" gap="xs" paddingLeft={1}>
         {line('l',
           <Button key={'call:' + c.id} plain dimColor={isDone || !isNow} onPress={() => set(x => ({ ...x, opened: toggle(x.opened, c.id) }))}>
-            <Text wrap="truncate-end">{isDetail ? '▾' : '▸'} {isDone ? '✓ ' : ''}{c.label}</Text>
+            <Text wrap="truncate-end"><Text dimColor>{isDetail ? '▾' : '▸'}</Text> <Text color={markColor} dimColor={!isDone && !isNow}>{mark}</Text> {c.label}</Text>
           </Button>,
-          p.showTimes && <Text size="footnote" color={isNow && !isDone ? ACCENT : 'gray'} dimColor={!isNow || isDone} tabular>{time}</Text>,
+          p.showTimes && <Text size="footnote" color={isDone ? markColor : isNow ? ACCENT : 'gray'} dimColor={!isNow && !isDone} tabular>{c.failed ? 'échec' : time}</Text>,
         )}
         {isNow && !isDone && gauge('g-' + c.id, 1 - left(c) / c.estMs)}
         {isDetail && (
@@ -393,8 +416,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
     ...groups.map(({ cat, items }) => {
       const active = items.filter(c => c.endedAt === undefined)
-      // Historique : les actions finies restent, les plus récentes en premier.
-      const done = items.filter(c => c.endedAt !== undefined).reverse()
+      const done = items.filter(c => c.endedAt !== undefined)
+      const first = active[0]
       const isOpen = !v.folded.includes(cat)
       // En cours : estimation du temps restant avant la fin de tout dans la catégorie. Fini : temps total passé.
       const catLeft = active.reduce((s, c) => s + Math.max(0, left(c)), 0)
@@ -405,10 +428,10 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
             <Button key={'cat:' + cat} plain dimColor={active.length === 0} onPress={() => set(x => ({ ...x, folded: toggle(x.folded, cat) }))}>
               <Text wrap="truncate-end">{isOpen ? '▾' : '▸'} <Text color={active.length ? ACCENT : 'gray'}>{ICON[cat] ?? '·'}</Text> {cat} <Text dimColor>({items.length})</Text></Text>
             </Button>,
-            p.showTimes && <Text size="footnote" color={active.length ? ACCENT : 'gray'} dimColor={!active.length} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
+            p.showTimes && <Text size="footnote" color={active.length ? ACCENT : GREEN} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
           )}
-          {isOpen && active.map((c, i) => row(c, i === 0))}
-          {isOpen && done.map(c => row(c, false))}
+          {/* Étape par étape, dans l'ordre où Claude les lance. */}
+          {isOpen && items.map(c => row(c, c === first))}
         </Box>
       )
     }),
