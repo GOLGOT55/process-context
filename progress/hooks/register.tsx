@@ -159,6 +159,12 @@ export function changedLines(content: string, changes: FileChange[]): Set<number
   return out
 }
 
+// Ligne (base 1) où commence le texte d'une modif dans le fichier actuel ; 0 s'il a été remplacé depuis.
+export function changeLine(content: string, c: FileChange): number {
+  const at = c.new ? content.indexOf(c.new) : -1
+  return at < 0 ? 0 : content.slice(0, at).split('\n').length
+}
+
 // Clic sur un fichier : il s'ajoute aux onglets de l'éditeur dans Progress (toujours visible).
 async function openFile($: EngineInterface, path: string) {
   await update($, fileView, v => ({ ...v, path, tab: v.path === path ? v.tab : 'code', inline: true, open: v.open.includes(path) ? v.open : [...v.open, path] }))
@@ -233,13 +239,19 @@ async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, paneReq?: 
   )
 
   if (current === 'diff') {
-    const blocks = f.changes.map((c, i) => (
-      <Box key={'chg' + i} flexDirection="column" gap={0} paddingY="xs">
-        <Text size="caption" dimColor weight="medium">{c.whole ? `MODIFICATION ${i + 1} · FICHIER ÉCRIT EN ENTIER` : `MODIFICATION ${i + 1}`}</Text>
-        {!c.whole && c.old.split('\n').map((l, j) => codeLine('o' + j, String(j + 1).padStart(3), l, DEL_BG, '−'))}
-        {!c.whole && c.new.split('\n').map((l, j) => codeLine('n' + j, String(j + 1).padStart(3), l, ADD_BG, '+'))}
-      </Box>
-    ))
+    // Vrais numéros de ligne du fichier (là où le nouveau texte est maintenant), pas 1, 2, 3 à chaque modif.
+    const now = await $.fs.read(f.path).catch(() => undefined)
+    const blocks = f.changes.map((c, i) => {
+      const start = typeof now === 'string' ? changeLine(now, c) : 0
+      const num = (j: number) => (start ? String(start + j) : '·').padStart(4)
+      return (
+        <Box key={'chg' + i} flexDirection="column" gap={0} paddingY="xs">
+          <Text size="caption" dimColor weight="medium">{c.whole ? `MODIFICATION ${i + 1} · FICHIER ÉCRIT EN ENTIER` : `MODIFICATION ${i + 1} · ${start ? `LIGNE ${start}` : 'REMPLACÉE DEPUIS'}`}</Text>
+          {!c.whole && c.old.split('\n').map((l, j) => codeLine('o' + j, num(j), l, DEL_BG, '−'))}
+          {!c.whole && c.new.split('\n').map((l, j) => codeLine('n' + j, num(j), l, ADD_BG, '+'))}
+        </Box>
+      )
+    })
     return <Box flexDirection="column" gap="sm">{header}{blocks}</Box>
   }
 

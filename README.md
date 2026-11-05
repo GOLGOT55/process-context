@@ -54,7 +54,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
 - **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre le fichier dans **sa propre fenêtre d'éditeur** (une par fichier, autant que tu veux) :
   - onglet **Contenu** : le fichier numéroté, les lignes changées par Claude surlignées en vert ;
-  - onglet **Changements** : chaque modification, lignes retirées en rouge (−) et ajoutées en vert (+) ;
+  - onglet **Changements** : chaque modification avec son vrai numéro de ligne dans le fichier, lignes retirées en rouge (−) et ajoutées en vert (+) ;
   - si l'app refuse les fenêtres à part, les fichiers s'ouvrent en **onglets** dans Progress (clic pour passer de l'un à l'autre, ✕ pour fermer, **← Retour** pour revenir).
 - **Garde-fou** (activable/désactivable dans ⚙) : avant une commande risquée, une fenêtre demande Autoriser ou Refuser :
   - suppression récursive (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) ;

@@ -246,7 +246,10 @@ test('éditeur : clic sur un fichier = sa propre fenêtre, contenu numéroté et
   expect(await w.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
   expect(await w.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
   await w.press({ key: 'tab:diff' })
-  expect(await w.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
+  // Numéro réel de la ligne dans le fichier (2), pas 1 à chaque modification.
+  expect(await w.find({ type: 'Text', text: /LIGNE 2/ })).toBeDefined()
+  expect(await w.find({ type: 'Text', text: /^\s*2 − const b = 0$/ })).toBeDefined()
+  expect(await w.find({ type: 'Text', text: /^\s*2 \+ const b = 2$/ })).toBeDefined()
   await w.unmount()
   const w2 = await $.ui.mount({ ...PANE, requestId: ids[1]!, props: { ...PANE.props, bodyColumns: 90 }, surface: 'desktop' })
   expect(await w2.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
