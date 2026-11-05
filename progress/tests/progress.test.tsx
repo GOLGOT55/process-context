@@ -12,8 +12,12 @@ const PANE = {
 const opened: unknown[] = []
 // false = l'app refuse les fenêtres à part (seul Progress s'affiche).
 let placed = true
+// Laisse finir ce qui a été lancé en arrière-plan (ouverture du panneau).
+const settle = () => new Promise(r => (globalThis as unknown as { setTimeout: (f: () => void, ms: number) => void }).setTimeout(() => r(undefined), 20))
 // true = l'app a fermé les panneaux (ex. après un arrêt).
 let closedAll = false
+// true = l'app refuse d'afficher le panneau (avec une raison).
+let refuseOpen = false
 const stored: Record<string, unknown> = {}
 const engine = (on: any) => {
   on('command.register', () => ({ value: { command: 'progress' } }))
@@ -24,7 +28,7 @@ const engine = (on: any) => {
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { stored[e.key] = e.value; return { value: undefined } })
   on('clock.now', () => ({ value: 1000 }))
   on('clock.every', () => ({ value: undefined }))
-  on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: { isPlaced: e.id === 'progress' || placed } } })
+  on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: refuseOpen ? { isPlaced: false, reason: 'too narrow' } : { isPlaced: e.id === 'progress' || placed } } })
   // Panneaux ouverts (vides tant que rien n'est ouvert ; closedAll simule l'app qui ferme tout).
   on('ui.panes', () => ({ value: closedAll ? [] : opened.map(o => ({ id: (o as { id: string }).id, title: '', isShown: true, isFocused: false, isPlaced: true })) }))
   on('turn.complete', () => ({ text: '' }))
@@ -353,4 +357,24 @@ test('ouverture dès le début de la session (sans attendre une demande) et comm
   const r = await $.command.run({ command: 'progress', args: '' } as never)
   expect((r as { text: string }).text).toContain('Progress')
   expect(ids.length).toBe(2)
+})
+
+test('l’app se reconnecte (redémarrage, bouton stop) : le panneau se rouvre tout de suite, raison gardée sinon', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  opened.length = 0
+  closedAll = false
+  placed = true
+  on('session.attach', (_: unknown, e: { clientId: string }) => ({ clientId: e.clientId }))
+  engine(on)
+  // Refusé une fois : la raison est gardée pour comprendre.
+  refuseOpen = true
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
+  await settle()
+  expect((stored.openTrace as { reason: string }[]).at(-1)?.reason).toBe('too narrow')
+  // L'app se reconnecte : rouvert sans attendre une demande.
+  refuseOpen = false
+  const before = opened.length
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
+  await settle()
+  expect(opened.length).toBeGreaterThan(before)
 })

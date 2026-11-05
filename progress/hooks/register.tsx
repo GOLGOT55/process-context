@@ -338,15 +338,21 @@ const toggle = (list: string[], key: string) => (list.includes(key) ? list.filte
 let isOpened = false
 async function ensureOpen($: EngineInterface, isAsked = false) {
   // Déjà ouvert ? On vérifie qu'il l'est vraiment (un arrêt de commande ou l'app a pu le fermer).
-  if (isOpened && !isAsked && (await $.ui.panes().catch(() => [])).some(x => x.id === PANE)) return
+  if (isOpened && !isAsked && (await $.ui.panes().catch(() => [])).some(x => x.id === PANE && x.isPlaced)) return
   isOpened = true
   const saved = (await $.store.get('prefs')) as Partial<Prefs> | undefined
   const p = await update($, prefs, x => ({ ...x, ...saved }))
   // La personnalisation reste masquée tant qu'on ne clique pas sur ⚙.
   await update($, view, x => ({ ...x, settings: false }))
   try {
-    const { isPlaced } = await $.ui.open({ id: PANE, title: 'Progress', columns: p.width })
-    if (!isPlaced) isOpened = false // pas encore affiché : on réessaie au prochain événement
+    const opened = await $.ui.open({ id: PANE, title: 'Progress', columns: p.width })
+    if (!opened.isPlaced) {
+      isOpened = false // pas encore affiché : on réessaie au prochain événement
+      // Pourquoi l'app ne l'affiche pas (gardé pour comprendre et corriger) : les 10 dernières raisons.
+      const at = await $.clock.now()
+      const trace = ((await $.store.get('openTrace').catch(() => undefined)) ?? []) as { at: number; reason: string }[]
+      await $.store.set('openTrace', [...trace, { at, reason: opened.reason }].slice(-10)).catch(() => {})
+    }
   } catch (err) {
     isOpened = false // pas encore d'écran attaché (début de session) : on réessaie au prochain événement
     throw err
@@ -383,13 +389,21 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'progress', description: 'Ouvrir le panneau Progress à droite' })
-    // L'écran de l'app s'attache un peu après le démarrage : on retente toutes les 2 s (≈ 1 min max) jusqu'à ce que le panneau soit affiché.
+    // L'écran de l'app s'attache un peu après le démarrage (ou après un redémarrage, ex. bouton stop) :
+    // on retente toutes les 2 s (≈ 2 min max) jusqu'à ce que le panneau soit vraiment affiché.
     let tries = 0
     const opener: Timer = $.clock.every(2000, () => {
-      if (isOpened || ++tries > 30) return opener.cancel()
+      if (isOpened || ++tries > 60) return opener.cancel()
       void ensureOpen($).catch(() => {})
     })
     return next(e)
+  })
+
+  // L'app se (re)connecte à la session : on rouvre le panneau tout de suite.
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e)
+    void ensureOpen($).catch(() => {})
+    return attached
   })
 
   on('command.run', { command: 'progress' }, async $ => {
