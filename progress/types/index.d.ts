@@ -19,8 +19,11 @@ export type View = { hidden: boolean; folded: string[]; opened: string[]; settin
 export type FileChange = { old: string; new: string; whole?: boolean }
 export type FileTouch = { path: string; added: number; removed: number; edits: number; last: string[]; changes: FileChange[]; written?: boolean }
 
-// Le fichier ouvert dans l'éditeur, et son onglet.
-export type FileView = { path: string; tab: 'code' | 'diff'; inline?: boolean }
+// L'éditeur dans Progress : fichiers ouverts en onglets (open), celui affiché (path) et sa vue.
+export type FileView = { path: string; tab: 'code' | 'diff'; inline?: boolean; open: string[] }
+
+// Une fenêtre à part : son id de panneau, son fichier, sa vue.
+export type PoppedFile = { id: string; path: string; tab: 'code' | 'diff' }
 
 // Une commande risquée vue par le garde-fou, et ce qui en a été décidé.
 export type GuardEntry = { at: number; command: string; reason: string; decision: 'autorisée' | 'refusée' | 'bloquée' }
@@ -38,7 +41,8 @@ declare module 'claude-code' {
       now: number
       files: Shaped<FileTouch[]>
       guard: Shaped<GuardEntry[]>
-      fileView: FileView
+      fileView: Shaped<FileView>
+      popped: Shaped<PoppedFile[]>
     }
   }
 }

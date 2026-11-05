@@ -206,17 +206,47 @@ test('éditeur : clic sur un fichier touché, contenu numéroté avec lignes cha
   await ui.press({ key: 'tab:diff' })
   expect(await ui.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
-  // Ouvrir à part : un second panneau, qui montre le même fichier.
+  await ui.press({ key: 'back' })
+  expect(await ui.find({ type: 'Text', text: /Fichiers touchés/i })).toBeDefined()
+  await ui.unmount()
+})
+
+test('éditeur : plusieurs fichiers en onglets, et une fenêtre à part par fichier', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  opened.length = 0
+  engine(on)
+  on('fs.read', (_: unknown, e: { path: string }) => ({ value: e.path.endsWith('a.ts') ? 'fichier A\n' : 'fichier B\n' }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/a.ts', old_string: 'x', new_string: 'fichier A' })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/b.ts', old_string: 'y', new_string: 'fichier B' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'f:/src/a.ts' })
+  await ui.press({ key: 'back' })
+  await ui.press({ key: 'f:/src/b.ts' })
+  // Deux onglets ouverts, B affiché ; clic sur l'onglet A.
+  expect(await ui.find({ type: 'Button', key: 'ft:/src/a.ts' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /fichier B/ })).toBeDefined()
+  await ui.press({ key: 'ft:/src/a.ts' })
+  expect(await ui.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
+
+  // Une fenêtre à part pour A, puis une autre pour B : deux fenêtres différentes.
   await ui.press({ key: 'pop' })
-  expect(opened.some(o => (o as { id: string }).id === 'progress-file')).toBe(true)
+  await ui.press({ key: 'ft:/src/b.ts' })
+  await ui.press({ key: 'pop' })
+  const ids = opened.map(o => (o as { id: string }).id).filter(id => id.startsWith('pf-'))
+  expect(new Set(ids).size).toBe(2)
+
+  // ✕ ferme l'onglet B ; A reste.
+  await ui.press({ key: 'fc:/src/b.ts' })
+  expect(await ui.find({ type: 'Button', key: 'ft:/src/b.ts' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /fichier A/ })).toBeDefined()
   await ui.unmount()
 
-  const ed = await $.ui.mount({ ...PANE, requestId: 'progress-file', props: { ...PANE.props, title: 'app.ts', bodyColumns: 90 }, surface: 'desktop' })
-  expect(await ed.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
-  await ed.unmount()
-
-  // Progress revient à sa vue normale.
-  const back = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await back.find({ type: 'Text', text: /Fichiers touchés/i })).toBeDefined()
-  await back.unmount()
+  // Chaque fenêtre montre son propre fichier.
+  for (const [id, text] of [[ids[0], /fichier A/], [ids[1], /fichier B/]] as const) {
+    const w = await $.ui.mount({ ...PANE, requestId: id!, props: { ...PANE.props, bodyColumns: 90 }, surface: 'desktop' })
+    expect(await w.find({ type: 'Text', text })).toBeDefined()
+    await w.unmount()
+  }
 })

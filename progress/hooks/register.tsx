@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, RenderInput, Timer } from 'claude-code'
 
-import type { Call, FileChange, FileTouch, GuardEntry, Prefs, Step, View } from '../types'
+import type { Call, FileChange, FileTouch, FileView, GuardEntry, Prefs, Step, View } from '../types'
 
 const PANE = 'progress'
 export const COLORS: Record<string, string> = {
@@ -131,9 +131,18 @@ export function guardCheck(command: string): { reason: string; block?: true } | 
   return GUARD_RULES.find(r => r.re.test(command))
 }
 
-// ----- Éditeur : le fichier ouvert dans son propre panneau -----
-const EDITOR = 'progress-file'
-const fileView = atom({ plugin: 'progress', key: 'fileView' } as const, { path: '', tab: 'code' })
+// ----- Éditeur : fichiers ouverts en onglets dans Progress, ou chacun dans sa fenêtre -----
+// Dans Progress : `open` = les onglets, `path` = l'onglet affiché.
+const fileView = atom({ plugin: 'progress', key: 'fileView' } as const, { path: '', tab: 'code', open: [] }, { shape: 'fileview-2' })
+// Une fenêtre à part par fichier : son id de panneau, son fichier, son onglet.
+const popped = atom({ plugin: 'progress', key: 'popped' } as const, [], { shape: 'popped-1' })
+const PANE_PREFIX = 'pf-'
+// Id de panneau stable pour un chemin (lettres et chiffres seulement, ≤ 64).
+export function paneId(path: string) {
+  let h = 5381
+  for (let i = 0; i < path.length; i++) h = ((h * 33) ^ path.charCodeAt(i)) >>> 0
+  return PANE_PREFIX + h.toString(36)
+}
 const MAX_LINES = 1500 // au-delà, le panneau deviendrait lourd
 
 // Numéros (base 0) des lignes du fichier qui viennent des changements de Claude.
@@ -150,32 +159,61 @@ export function changedLines(content: string, changes: FileChange[]): Set<number
   return out
 }
 
-// Clic sur un fichier : l'éditeur s'affiche dans le panneau Progress (toujours visible).
+// Clic sur un fichier : il s'ajoute aux onglets de l'éditeur dans Progress (toujours visible).
 async function openFile($: EngineInterface, path: string) {
-  await update($, fileView, v => ({ path, tab: v.path === path ? v.tab : 'code', inline: true }))
+  await update($, fileView, v => ({ ...v, path, tab: v.path === path ? v.tab : 'code', inline: true, open: v.open.includes(path) ? v.open : [...v.open, path] }))
 }
 
-// « Ouvrir à part » : le même éditeur dans son propre panneau, mis au premier plan.
-async function popOutFile($: EngineInterface, path: string) {
-  const { isPlaced } = await $.ui.open({ id: EDITOR, title: base(path), columns: 90, focus: true })
-  if (isPlaced) await update($, fileView, v => ({ ...v, inline: false }))
-  else $.ui.toast('Le panneau à part ne peut pas s’ouvrir ici : l’éditeur reste dans Progress.')
+// Ferme un onglet ; s'il n'en reste plus, Progress revient à sa vue normale.
+async function closeTab($: EngineInterface, path: string) {
+  await update($, fileView, v => {
+    const open = v.open.filter(x => x !== path)
+    const shown = v.path === path ? open[open.length - 1] ?? '' : v.path
+    return { ...v, open, path: shown, inline: v.inline && open.length > 0 }
+  })
 }
 
-async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, isInline = false) {
+// « Ouvrir à part » : une nouvelle fenêtre pour ce fichier (une par fichier, autant qu'on veut).
+async function popOutFile($: EngineInterface, path: string, tab: FileView['tab']) {
+  const id = paneId(path)
+  await update($, popped, l => [...l.filter(x => x.id !== id), { id, path, tab }].slice(-20))
+  const { isPlaced } = await $.ui.open({ id, title: base(path), columns: 90, focus: true })
+  if (!isPlaced) $.ui.toast('La fenêtre à part ne peut pas s’ouvrir ici : le fichier reste dans Progress.')
+}
+
+// paneReq = id de la fenêtre à part, ou undefined pour l'éditeur dans Progress.
+async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, paneReq?: string) {
   const { Box, Text, Button } = $.ui.resolve(e)
-  const [fv, list, p] = [await read($, fileView), await read($, files), await read($, prefs)]
-  const f = list.find(x => x.path === fv.path)
-  if (!fv.path || !f) return <Text dimColor>Clique sur un fichier dans Progress → Fichiers touchés pour l'ouvrir ici.</Text>
+  const [fv, pops, list, p] = [await read($, fileView), await read($, popped), await read($, files), await read($, prefs)]
+  const isInline = paneReq === undefined
+  const own = pops.find(x => x.id === paneReq)
+  const path = isInline ? fv.path : own?.path ?? ''
+  const current = isInline ? fv.tab : own?.tab ?? 'code'
+  const f = list.find(x => x.path === path)
+  if (!path || !f) return <Text dimColor>Clique sur un fichier dans Progress → Fichiers touchés pour l'ouvrir ici.</Text>
   const CHECK = p.checkColor ?? GREEN
   const ADD_BG = '#12301f'
   const DEL_BG = '#3a1717'
-  const setTab = (tab: 'code' | 'diff') => void update($, fileView, v => ({ ...v, tab }))
-  const tab = (key: 'code' | 'diff', label: string) => (
-    <Button key={'tab:' + key} label={label} variant={fv.tab === key ? 'primary' : 'secondary'} dimColor={fv.tab !== key} onPress={() => setTab(key)} />
+  const setTab = (tab: FileView['tab']) => void (isInline
+    ? update($, fileView, v => ({ ...v, tab }))
+    : update($, popped, l => l.map(x => (x.id === paneReq ? { ...x, tab } : x))))
+  const tab = (key: FileView['tab'], label: string) => (
+    <Button key={'tab:' + key} label={label} variant={current === key ? 'primary' : 'secondary'} dimColor={current !== key} onPress={() => setTab(key)} />
+  )
+  // Onglets des fichiers ouverts dans Progress : clic = afficher, ✕ = fermer.
+  const fileTabs = isInline && fv.open.length > 0 && (
+    <Box key="files" flexDirection="row" gap="xs" alignItems="center" flexWrap="wrap">
+      {fv.open.map(o => (
+        <Box key={'ft:' + o} flexDirection="row" alignItems="center" gap={0}>
+          <Button key={'ft:' + o} label={base(o)} variant={o === path ? 'primary' : 'secondary'} dimColor={o !== path} onPress={() => void update($, fileView, v => ({ ...v, path: o, tab: 'code' as const }))} />
+          <Button key={'fc:' + o} label="✕" plain dimColor onPress={() => void closeTab($, o)} />
+        </Box>
+      ))}
+    </Box>
   )
   const header = (
     <Box key="head" flexDirection="column" gap="xs" paddingX="md" paddingY="sm" borderStyle="round" borderColor="#232833" backgroundColor="#121419">
+      {fileTabs}
       <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap="sm">
         <Text weight="semibold" wrap="truncate-end">{f.written ? '✚' : '✎'} {base(f.path)}</Text>
         <Text size="footnote" tabular><Text color={CHECK}>+{f.added}</Text> <Text color={RED}>−{f.removed}</Text> <Text dimColor>· {f.edits} modif{f.edits > 1 ? 's' : ''}</Text></Text>
@@ -183,7 +221,7 @@ async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, isInline =
       <Text size="footnote" dimColor mono wrap="truncate-middle">{f.path}</Text>
       <Box flexDirection="row" gap="sm" alignItems="center" flexWrap="wrap">
         {tab('code', 'Contenu')}{tab('diff', 'Changements')}
-        {isInline && <Button key="pop" label="↗ Ouvrir à part" plain dimColor onPress={() => void popOutFile($, f.path).catch(() => {})} />}
+        {isInline && <Button key="pop" label="↗ Ouvrir à part" plain dimColor onPress={() => void popOutFile($, f.path, current).catch(() => {})} />}
         {isInline && <Button key="back" label="← Retour" plain dimColor onPress={() => void update($, fileView, v => ({ ...v, inline: false }))} />}
       </Box>
     </Box>
@@ -194,7 +232,7 @@ async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, isInline =
     </Text>
   )
 
-  if (fv.tab === 'diff') {
+  if (current === 'diff') {
     const blocks = f.changes.map((c, i) => (
       <Box key={'chg' + i} flexDirection="column" gap={0} paddingY="xs">
         <Text size="caption" dimColor weight="medium">{c.whole ? `MODIFICATION ${i + 1} · FICHIER ÉCRIT EN ENTIER` : `MODIFICATION ${i + 1}`}</Text>
@@ -399,9 +437,9 @@ export const register: Register = on => {
   })
 
   // Panneau à droite de la conversation (plus sous la carte Contexte).
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => body($, e))
-  // Éditeur : un fichier touché, ouvert depuis la carte Fichiers.
-  on('ui.render', { component: 'Pane', requestId: EDITOR }, async ($, e) => editorBody($, e))
+  // Et une fenêtre par fichier ouvert à part (ids « pf-… »).
+  on('ui.render', { component: 'Pane' }, async ($, e, next) =>
+    e.requestId === PANE ? body($, e) : e.requestId.startsWith(PANE_PREFIX) ? editorBody($, e, e.requestId) : next(e))
 
 }
 
@@ -462,7 +500,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const Svg = 'Svg' in els ? els.Svg : undefined // pas de Svg dans le terminal
   // Un fichier ouvert : l'éditeur prend la place du contenu, avec « ← Retour ».
   const opened = await read($, fileView)
-  if (opened.inline && opened.path) return editorBody($, e, true)
+  if (opened.inline && (await read($, files)).some(f => f.path === opened.path)) return editorBody($, e)
   const [list, steps, v, t, p] = [await read($, calls), await read($, plan), await read($, view), await read($, now), await read($, prefs)]
   const ACCENT = p.accent
   const CHECK = p.checkColor ?? GREEN // couleur des ✓ validées
