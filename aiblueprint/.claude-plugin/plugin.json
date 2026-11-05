@@ -1,74 +1,79 @@
 {
   "name": "aiblueprint",
-  "version": "1.5.2",
-  "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+  "version": "1.5.3",
+  "description": "Context card above the prompt: context used, cost, 5-hour and weekly limits, and the economy mode (short answers, minimal code, auto-compaction at 400k, tokens saved).",
   "author": {
     "name": "GOLGOT55",
     "url": "https://github.com/GOLGOT55"
   },
   "license": "MIT",
   "repository": "https://github.com/GOLGOT55/process-context",
-  "keywords": ["contexte", "usage", "limites", "bandeau"],
+  "keywords": [
+    "context",
+    "usage",
+    "limits",
+    "band"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "showSession": {
       "type": "boolean",
       "title": "Session chip",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show session cost and duration.",
       "default": true
     },
     "showFiveHour": {
       "type": "boolean",
       "title": "5h chip",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show the 5-hour limit.",
       "default": true
     },
     "showWeek": {
       "type": "boolean",
       "title": "Week chip",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show the weekly limit.",
       "default": true
     },
     "showBars": {
       "type": "boolean",
       "title": "Bars",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show the gauges.",
       "default": true
     },
     "showPace": {
       "type": "boolean",
       "title": "Pace",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show the pace (+/−) against the limit.",
       "default": true
     },
     "showReset": {
       "type": "boolean",
       "title": "Reset time",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Show when each limit resets.",
       "default": true
     },
     "sessionLabel": {
       "type": "string",
       "title": "Session label",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Label of the session chip.",
       "default": "S"
     },
     "fiveHourLabel": {
       "type": "string",
       "title": "5h label",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Label of the 5-hour chip.",
       "default": "5h"
     },
     "weekLabel": {
       "type": "string",
       "title": "Week label",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "Label of the weekly chip.",
       "default": "Week"
     },
     "refreshSeconds": {
       "type": "number",
       "title": "Refresh (seconds)",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
+      "description": "How often usage is refreshed, in seconds.",
       "default": 30
     }
   }

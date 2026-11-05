@@ -5,19 +5,19 @@
     "url": "https://github.com/GOLGOT55"
   },
   "metadata": {
-    "description": "Deux mods Claude Code : Progress (ce que Claude fait, en direct) et Contexte (contexte, limites d'usage et mode économe).",
-    "version": "1.1.0"
+    "description": "Two Claude Code mods: Radar (what Claude is doing, live) and Context (context, usage limits and tokens saved).",
+    "version": "1.2.0"
   },
   "plugins": [
     {
-      "name": "progress",
-      "source": "./progress",
-      "description": "Panneau à droite : actions de Claude par catégorie, temps estimé, détails et historique."
+      "name": "radar",
+      "source": "./radar",
+      "description": "Right-hand panel: Claude actions by category with estimated times, details, files touched, safety guard and economy mode."
     },
     {
       "name": "aiblueprint",
       "source": "./aiblueprint",
-      "description": "Carte Contexte au-dessus de la saisie : contexte, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k)."
+      "description": "Context card above the prompt: context used, cost, 5-hour and weekly limits, and tokens saved by the economy mode."
     }
   ]
 }

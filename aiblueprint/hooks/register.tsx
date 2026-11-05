@@ -516,7 +516,8 @@ export const register: Register = (on, rawOptions) => {
     const text = skillIndex ? `${RULES}
 
 ${skillIndex}` : RULES
-    return { sections: [...composed.sections.filter(x => x.id !== ECONOME_ID), { id: ECONOME_ID, text, scope: 'session' }] }
+    // Radar et Contexte ensemble : une seule copie des règles économes.
+    return { sections: [...composed.sections.filter(x => !x.id.endsWith(':econome')), { id: ECONOME_ID, text, scope: 'session' }] }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -3,14 +3,14 @@ import { expect, mock, test } from 'claude-code/testing'
 import { guardCheck } from '../hooks/register.js'
 
 const PANE = {
-  plugin: 'progress',
+  plugin: 'radar',
   component: 'Pane',
-  requestId: 'progress',
-  props: { title: 'Progress', isFocused: false, bodyColumns: 46, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+  requestId: 'radar',
+  props: { title: 'Radar', isFocused: false, bodyColumns: 46, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
 const opened: unknown[] = []
-// false = l'app refuse les fenêtres à part (seul Progress s'affiche).
+// false = l'app refuse les fenêtres à part (seul Radar s'affiche).
 let placed = true
 // Laisse finir ce qui a été lancé en arrière-plan (ouverture du panneau).
 const settle = () => new Promise(r => (globalThis as unknown as { setTimeout: (f: () => void, ms: number) => void }).setTimeout(() => r(undefined), 20))
@@ -20,7 +20,7 @@ let closedAll = false
 let refuseOpen = false
 const stored: Record<string, unknown> = {}
 const engine = (on: any) => {
-  on('command.register', () => ({ value: { command: 'progress' } }))
+  on('command.register', () => ({ value: { command: 'radar' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
   on('prompt.submit', (_: unknown, e: unknown) => e)
@@ -28,7 +28,7 @@ const engine = (on: any) => {
   on('store.set', (_: unknown, e: { key: string; value: unknown }) => { stored[e.key] = e.value; return { value: undefined } })
   on('clock.now', () => ({ value: 1000 }))
   on('clock.every', () => ({ value: undefined }))
-  on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: refuseOpen ? { isPlaced: false, reason: 'too narrow' } : { isPlaced: e.id === 'progress' || placed } } })
+  on('ui.open', (_: unknown, e: { id: string }) => { opened.push(e); return { value: refuseOpen ? { isPlaced: false, reason: 'too narrow' } : { isPlaced: e.id === 'radar' || placed } } })
   // Panneaux ouverts (vides tant que rien n'est ouvert ; closedAll simule l'app qui ferme tout).
   on('ui.panes', () => ({ value: closedAll ? [] : opened.map(o => ({ id: (o as { id: string }).id, title: '', isShown: true, isFocused: false, isPlaced: true })) }))
   on('turn.complete', () => ({ text: '' }))
@@ -45,7 +45,7 @@ test('le panneau à droite suit les actions et se personnalise', async ($, on) =
 
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const one = await $.ui.mount({ ...PANE, surface })
-    expect(await one.find({ type: 'Text', text: /^PROGRESS$/ })).toBeDefined()
+    expect(await one.find({ type: 'Text', text: /^RADAR$/ })).toBeDefined()
     expect(await one.find({ type: 'Button', text: /Lecture/ })).toBeDefined()
     expect((await one.find({ type: 'Text', text: /Écrire/ }))?.text).toContain('●')
     await one.unmount()
@@ -61,7 +61,7 @@ test('le panneau à droite suit les actions et se personnalise', async ($, on) =
   await ui.press({ key: 'width:Large' })
   expect((stored.prefs as { width: number }).width).toBe(62)
   await ui.press({ key: 'opt:showSummary' })
-  expect(await ui.find({ type: 'Text', text: /^PROGRESS$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^RADAR$/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /Effacer/ })).toBeUndefined()
   await ui.press({ key: 'eye' })
   expect(await ui.find({ type: 'Button', key: 'cat:Lecture' })).toBeUndefined()
@@ -242,7 +242,7 @@ test('éditeur : clic sur un fichier = sa propre fenêtre, contenu numéroté et
   await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'const b = 0', new_string: 'const b = 2' })
   await $.tool.call({ tool: 'Edit', file_path: '/src/a.ts', old_string: 'x', new_string: 'fichier A' })
 
-  // Un clic par fichier : une fenêtre chacun, Progress reste tel quel.
+  // Un clic par fichier : une fenêtre chacun, Radar reste tel quel.
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'f:/src/app.ts' })
   await ui.press({ key: 'f:/src/a.ts' })
@@ -265,7 +265,7 @@ test('éditeur : clic sur un fichier = sa propre fenêtre, contenu numéroté et
   await w2.unmount()
 })
 
-test('éditeur : si l’app refuse les fenêtres, les fichiers s’ouvrent en onglets dans Progress', async ($, on) => {
+test('éditeur : si l’app refuse les fenêtres, les fichiers s’ouvrent en onglets dans Radar', async ($, on) => {
   for (const k in stored) delete stored[k]
   opened.length = 0
   placed = false
@@ -328,18 +328,18 @@ test('commande stoppée : l’action finit « arrêtée », le minuteur s’arr�
   await ui.unmount()
 
   // L'app a fermé le panneau : la prochaine demande le rouvre.
-  const before = opened.filter(o => (o as { id: string }).id === 'progress').length
+  const before = opened.filter(o => (o as { id: string }).id === 'radar').length
   closedAll = true
   await $.prompt.submit({ text: 'encore', wait: false, origin: { kind: 'composer' } })
   closedAll = false
-  expect(opened.filter(o => (o as { id: string }).id === 'progress').length).toBe(before + 1)
+  expect(opened.filter(o => (o as { id: string }).id === 'radar').length).toBe(before + 1)
 })
 
-test('ouverture dès le début de la session (sans attendre une demande) et commande /progress', async ($, on) => {
+test('ouverture dès le début de la session (sans attendre une demande) et commande /radar', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const ids: string[] = []
   let attached = false // l'écran de l'app s'attache un peu après le démarrage
-  on('command.register', () => ({ value: { command: 'progress' } }))
+  on('command.register', () => ({ value: { command: 'radar' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('store.get', () => ({ value: undefined }))
   on('ui.panes', () => ({ value: attached ? ids.map(id => ({ id, title: '', isShown: true, isFocused: false, isPlaced: true })) : [] }))
@@ -350,12 +350,12 @@ test('ouverture dès le début de la session (sans attendre une demande) et comm
   expect(ids.length).toBe(0)
   attached = true
   await clock.advance(2_100) // écran prêt : le panneau s'ouvre tout seul
-  expect(ids).toEqual(['progress'])
+  expect(ids).toEqual(['radar'])
   await clock.advance(10_000) // ouvert : il arrête de réessayer
   expect(ids.length).toBe(1)
 
-  const r = await $.command.run({ command: 'progress', args: '' } as never)
-  expect((r as { text: string }).text).toContain('Progress')
+  const r = await $.command.run({ command: 'radar', args: '' } as never)
+  expect((r as { text: string }).text).toContain('Radar')
   expect(ids.length).toBe(2)
 })
 
@@ -430,4 +430,58 @@ test('jauge à droite du titre Plan : toujours visible quand la carte est rédui
   expect(await ui.find({ type: 'Text', text: /Deux/ })).toBeUndefined() // étapes cachées
   expect((await ui.findAll({ type: 'Svg' })).length).toBeGreaterThan(0) // jauge toujours là
   await ui.unmount()
+})
+
+test('éditeur : ✎ Modifier, taper, ✓ Confirmer écrit le fichier ; ✕ Annuler et fichier changé n’écrivent rien', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  opened.length = 0
+  placed = false // fenêtres refusées : le fichier s'ouvre dans Radar
+  engine(on)
+  const disk: Record<string, string> = { '/src/app.ts': 'const a = 1\n' }
+  const writes: { path: string; text: string }[] = []
+  // Le moteur peut donner le chemin résolu (lecteur, antislashs) : on compare la fin.
+  const at = (p: string) => Object.keys(disk).find(k => p.replace(/\\/g, '/').endsWith(k)) ?? p
+  on('fs.read', (_: unknown, e: { path: string }) => ({ value: disk[at(e.path)] }))
+  on('fs.write', (_: unknown, e: { path: string; text: string }) => { writes.push({ path: at(e.path), text: e.text }); disk[at(e.path)] = e.text; return { value: undefined } })
+  on('ui.toast', () => ({ value: undefined }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'x', new_string: 'const a = 1' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'f:/src/app.ts' })
+  await ui.press({ key: 'edit' })
+  await settle()
+  expect(await ui.find({ type: 'Button', key: 'edit-ok' })).toBeDefined()
+  await ui.input({ key: 'edit-field', text: 'const a = 2\n', kind: 'change' })
+  expect(await ui.find({ type: 'Text', text: /non enregistré/ })).toBeDefined()
+  expect(writes.length).toBe(0) // rien d'écrit avant la confirmation
+  await ui.press({ key: 'edit-ok' })
+  await settle()
+  expect(writes).toEqual([{ path: '/src/app.ts', text: 'const a = 2\n' }])
+  expect(await ui.find({ type: 'Button', key: 'edit' })).toBeDefined() // retour à la lecture
+
+  // Annuler : rien d'écrit.
+  await ui.press({ key: 'edit' })
+  await settle()
+  await ui.input({ key: 'edit-field', text: 'perdu', kind: 'change' })
+  await ui.press({ key: 'edit-cancel' })
+  await settle()
+  expect(writes.length).toBe(1)
+
+  // Fichier changé sur le disque pendant l'édition : refus, message, rien d'écrasé.
+  await ui.press({ key: 'edit' })
+  await settle()
+  await ui.input({ key: 'edit-field', text: 'ma version', kind: 'change' })
+  disk['/src/app.ts'] = 'changé par Claude\n'
+  await ui.press({ key: 'edit-ok' })
+  await settle()
+  expect(writes.length).toBe(1)
+  expect(await ui.find({ type: 'Text', text: /a changé sur le disque/ })).toBeDefined()
+  await ui.unmount()
+
+  // Mobile : pas de champ texte, donc pas de bouton Modifier.
+  const m = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await m.find({ type: 'Button', key: 'edit' })).toBeUndefined()
+  await m.unmount()
+  placed = true
 })

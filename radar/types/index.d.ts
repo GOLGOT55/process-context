@@ -21,21 +21,24 @@ export type View = { hidden: boolean; unfolded: string[]; opened: string[]; sett
 export type FileChange = { old: string; new: string; whole?: boolean }
 export type FileTouch = { path: string; added: number; removed: number; edits: number; last: string[]; changes: FileChange[]; written?: boolean }
 
-// L'éditeur dans Progress : fichiers ouverts en onglets (open), celui affiché (path) et sa vue.
+// L'éditeur dans Radar : fichiers ouverts en onglets (open), celui affiché (path) et sa vue.
 export type FileView = { path: string; tab: 'code' | 'diff'; inline?: boolean; open: string[] }
 
 // Une fenêtre à part : son id de panneau, son fichier, sa vue.
 export type PoppedFile = { id: string; path: string; tab: 'code' | 'diff' }
 
+// Une modification en cours dans l'éditeur : texte tapé, texte du fichier au départ, erreur à l'écriture.
+export type EditDraft = { path: string; draft: string; original: string; error?: string }
+
 // Une commande risquée vue par le garde-fou, et ce qui en a été décidé.
 export type GuardEntry = { at: number; command: string; reason: string; decision: 'autorisée' | 'refusée' | 'bloquée' }
 
 // Réglages de la fenêtre, gardés d'une session à l'autre (copiés dans $.store).
-export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean; guard?: boolean; hiddenCats?: string[] }
+export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean; guard?: boolean; econome?: boolean; hiddenCats?: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    progress: {
+    radar: {
       calls: Shaped<Call[]>
       plan: Shaped<Step[]>
       view: Shaped<View>
@@ -45,6 +48,7 @@ declare module 'claude-code' {
       guard: Shaped<GuardEntry[]>
       fileView: Shaped<FileView>
       popped: Shaped<PoppedFile[]>
+      editing: Shaped<EditDraft[]>
     }
   }
 }

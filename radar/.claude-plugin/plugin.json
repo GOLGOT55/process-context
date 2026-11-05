@@ -1,0 +1,19 @@
+{
+  "name": "radar",
+  "version": "1.15.0",
+  "description": "Radar: a right-hand panel showing what Claude is doing live (plan, actions, files, safety guard), plus an economy mode: auto-compaction at 400k and smart skill selection.",
+  "author": {
+    "name": "GOLGOT55",
+    "url": "https://github.com/GOLGOT55"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/GOLGOT55/process-context",
+  "keywords": [
+    "progress",
+    "panel",
+    "actions",
+    "history",
+    "economy"
+  ],
+  "types": "./types/index.d.ts"
+}
