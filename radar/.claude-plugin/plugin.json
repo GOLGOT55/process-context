@@ -1,6 +1,6 @@
 {
   "name": "radar",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Radar: what Claude is doing, live (plan, actions, files, safety guard) in a right-hand panel, a Context card above the prompt (context, cost, 5-hour and weekly limits), and an economy mode (short answers, minimal code, auto-compaction at 400k, smart skill selection).",
   "author": {
     "name": "GOLGOT55",

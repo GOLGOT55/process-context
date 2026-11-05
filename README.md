@@ -60,7 +60,7 @@ claude plugin uninstall progress; claude plugin uninstall aiblueprint
   - if the app refuses separate windows, files open as tabs inside Radar.
 - **Guard** (on/off in ⚙): before a risky command (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`) a dialog asks Allow or Deny. Wiping or formatting a drive is always denied. Only real commands count, not text that mentions them.
 
-**⚙** settings (defaults: gray, wide, transparent, segment gauges): color, color of ✓ and times, gauge (line, segments, ring, none — shown right of the titles, visible when folded), background, width, what to show, each category, guard, economy mode. Kept for all sessions.
+**⚙** settings (defaults: gray, wide, transparent, segment gauges): color, color of ✓ and times, gauge (line, segments, ring, none — shown right of the titles, visible when folded), Actions gauge (always — stays at 100% once done, like the Plan — or only while working), background, width, what to show, each category, guard, economy mode. Kept for all sessions.
 
 ## Context card
 

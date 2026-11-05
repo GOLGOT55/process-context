@@ -159,6 +159,25 @@ test('style de jauge : ligne, segments, anneau ou aucune', async ($, on) => {
   await term.unmount()
 })
 
+test('jauge Actions : reste affichée à 100 % une fois fini (comme le Plan), ou seulement en cours', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items: [{ content: 'Un', status: 'completed' }, { content: 'Deux', status: 'pending' }] })
+  await $.tool.call({ tool: 'Read', file_path: '/src/a.ts' }) // action finie, plus rien en cours
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const gauges = async () => (await ui.findAll({ type: 'Svg' })).length
+  expect(await gauges()).toBe(2) // Plan + Actions (défaut : toujours)
+  await ui.press({ key: 'gear' })
+  await ui.press({ key: 'agauge:En cours' })
+  expect((stored.prefs as { actionsGauge: string }).actionsGauge).toBe('En cours')
+  expect(await gauges()).toBe(1) // Plan seul : rien ne tourne
+  await ui.press({ key: 'agauge:Toujours' })
+  expect(await gauges()).toBe(2)
+  await ui.unmount()
+})
+
 test('fichiers touchés : +/− par fichier, détail au clic, gardés d’une demande à l’autre', async ($, on) => {
   for (const k in stored) delete stored[k]
   engine(on)

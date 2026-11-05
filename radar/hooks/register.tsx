@@ -875,6 +875,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     section('s-check', 'Validations ✓', swatches('check', CHECK, c => x => ({ ...x, checkColor: c }), { Vert: GREEN, ...COLORS })),
     section('s-time', 'Temps', swatches('time', TIME, c => x => ({ ...x, timeColor: c }), { Blanc: '#e5e7eb', ...COLORS })),
     section('s-gauge', 'Jauge', GAUGES.map(name => chip('gauge:' + name, name, style === name, () => pick(x => ({ ...x, gauge: name }))))),
+    // Jauge d'Actions : gardée à 100 % une fois fini (comme le Plan), ou seulement pendant le travail.
+    section('s-agauge', 'Jauge Actions', (['Toujours', 'En cours'] as const).map(name => chip('agauge:' + name, name === 'Toujours' ? 'Toujours (reste à 100 %)' : 'Seulement en cours', (p.actionsGauge ?? 'Toujours') === name, () => pick(x => ({ ...x, actionsGauge: name }))))),
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
     section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps'), toggleChip('showFiles', 'Fichiers')]),
@@ -949,7 +951,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   // Temps total de toutes les actions : restant pendant le travail, passé une fois tout fini.
   const spent = shown.reduce((s, c) => s + (c.endedAt !== undefined ? c.endedAt - c.startedAt : 0), 0)
   const actionsCard = card('actions', [
-    line('cap', <Box flexDirection="row" alignItems="center" gap="sm">{fold('actions', 'Actions')}{running.length > 0 && gauge('g-actions', runRatio, TITLE_W)}</Box>, p.showTimes && shown.length > 0 && (running.length
+    line('cap', <Box flexDirection="row" alignItems="center" gap="sm">{fold('actions', 'Actions')}{(running.length > 0 || (p.actionsGauge !== 'En cours' && shown.length > 0)) && gauge('g-actions', runRatio, TITLE_W)}</Box>, p.showTimes && shown.length > 0 && (running.length
       ? <Text size="footnote" weight="semibold" color={TIME} tabular>~{fmt(total)}</Text>
       : <Text size="footnote" weight="semibold" color={CHECK} tabular>✓ {fmt(spent)}</Text>)),
     !isClosed('actions') && shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
