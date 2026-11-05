@@ -21,8 +21,8 @@ const calls = atom({ plugin: 'progress', key: 'calls' } as const, [], { shape: '
 const plan = atom({ plugin: 'progress', key: 'plan' } as const, [], { shape: 'plan-1' })
 const view = atom(
   { plugin: 'progress', key: 'view' } as const,
-  { hidden: false, folded: [], opened: [], settings: false },
-  { shape: 'view-2' },
+  { hidden: false, unfolded: [], opened: [], settings: false },
+  { shape: 'view-3' },
 )
 const now = atom({ plugin: 'progress', key: 'now' } as const, 0)
 // Fichiers modifiés pendant toute la conversation (pas vidés à chaque demande).
@@ -352,7 +352,12 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'progress', description: 'Ouvrir le panneau Progress à droite' })
-    // Pas d'ouverture ici : l'écran n'est pas encore attaché (message d'erreur gris). Le panneau s'ouvre à la première demande.
+    // L'écran de l'app s'attache un peu après le démarrage : on retente toutes les 2 s (≈ 1 min max) jusqu'à ce que le panneau soit affiché.
+    let tries = 0
+    const opener: Timer = $.clock.every(2000, () => {
+      if (isOpened || ++tries > 30) return opener.cancel()
+      void ensureOpen($).catch(() => {})
+    })
     return next(e)
   })
 
@@ -374,7 +379,7 @@ export const register: Register = on => {
     // Nouvelle demande : on repart de zéro (on garde seulement ce qui tourne encore).
     const left = await update($, calls, l => l.filter(c => c.endedAt === undefined))
     if (left.length === 0) await update($, plan, () => [])
-    await update($, view, x => ({ ...x, opened: [], folded: [] }))
+    await update($, view, x => ({ ...x, opened: [], unfolded: [] }))
     return next(e)
   })
 
@@ -682,20 +687,21 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
       const active = items.filter(c => c.endedAt === undefined)
       const done = items.filter(c => c.endedAt !== undefined)
       const first = active[0]
-      const isOpen = !v.folded.includes(cat)
+      const isOpen = v.unfolded.includes(cat) // fermées par défaut
       // En cours : estimation du temps restant avant la fin de tout dans la catégorie. Fini : temps total passé.
       const catLeft = active.reduce((s, c) => s + Math.max(0, left(c)), 0)
       const catSpent = done.reduce((s, c) => s + ((c.endedAt ?? 0) - c.startedAt), 0)
       return (
         <Box key={'grp:' + cat} flexDirection="column" gap="xs">
           {line('h',
-            <Button key={'cat:' + cat} plain dimColor={active.length === 0} onPress={() => set(x => ({ ...x, folded: toggle(x.folded, cat) }))}>
+            <Button key={'cat:' + cat} plain dimColor={active.length === 0} onPress={() => set(x => ({ ...x, unfolded: toggle(x.unfolded, cat) }))}>
               <Text wrap="truncate-end">{isOpen ? '▾' : '▸'} <Text color={active.length ? ACCENT : 'gray'}>{ICON[cat] ?? '·'}</Text> {cat} <Text dimColor>({items.length})</Text></Text>
             </Button>,
             p.showTimes && <Text size="footnote" color={active.length ? TIME : CHECK} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
           )}
           {/* Étape par étape, dans l'ordre où Claude les lance. */}
-          {isOpen && items.map(c => row(c, c === first))}
+          {/* Fermée : seulement l'action en cours (temps qui défile), elle disparaît une fois finie. */}
+          {(isOpen ? items : active).map(c => row(c, c === first))}
         </Box>
       )
     }),

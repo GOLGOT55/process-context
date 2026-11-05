@@ -12,7 +12,8 @@ export type Call = {
 
 export type Step = { title: string; status: 'pending' | 'in_progress' | 'completed' }
 
-export type View = { hidden: boolean; folded: string[]; opened: string[]; settings: boolean }
+// unfolded = catégories ouvertes (fermées par défaut : on n'y voit que l'action en cours).
+export type View = { hidden: boolean; unfolded: string[]; opened: string[]; settings: boolean }
 
 // Un fichier modifié pendant la conversation : lignes ajoutées/retirées, nombre de modifs, dernier aperçu.
 // whole = fichier écrit en entier (Write).

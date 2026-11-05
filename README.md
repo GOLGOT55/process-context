@@ -43,7 +43,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 
 ## Progress
 
-- S'ouvre tout seul à droite dès la première demande ou commande ; `/progress` le rouvre.
+- S'ouvre tout seul à droite dès l'ouverture de la session (et au plus tard à la première demande) ; `/progress` le rouvre.
 - **Catégories** : Lecture, Recherche, Web, Modifications, Commandes, Agents, Autre.
 - **Temps estimé** qui s'écoule pour chaque action en cours, appris à partir des durées réelles et gardé d'une session à l'autre.
 - **Détail au clic** : fichier et lignes, motif et dossier de recherche, page ou requête web, commande lancée, aperçu des modifications (−/+), fin du résultat.
@@ -62,7 +62,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
   - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`.
 
   Seules les vraies commandes comptent : un texte qui contient juste ces mots (un message, un test) ne déclenche rien. Effacer tout un disque ou le formater est refusé d'office. La carte « Garde-fou » liste chaque commande avec ✓ autorisée, ✕ refusée ou ⛔ bloquée, l'heure, et la commande au clic.
-- Flèches ▸/▾ pour replier, œil ◉ pour réduire le panneau.
+- **Catégories fermées par défaut** : on n'y voit que l'action en cours, avec son temps qui défile ; une fois finie, elle se range et il ne reste que la catégorie avec son ✓. Clic sur ▸ pour tout voir, ▾ pour refermer. Œil ◉ pour réduire le panneau.
 
 ### Personnaliser
 
