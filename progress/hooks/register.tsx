@@ -190,7 +190,7 @@ async function popOutFile($: EngineInterface, path: string, tab: FileView['tab']
 // paneReq = id de la fenêtre à part, ou undefined pour l'éditeur dans Progress.
 async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, paneReq?: string) {
   const { Box, Text, Button } = $.ui.resolve(e)
-  const [fv, pops, list, p] = [await read($, fileView), await read($, popped), await read($, files), await read($, prefs)]
+  const [fv, pops, list, p] = await Promise.all([read($, fileView), read($, popped), read($, files), read($, prefs)])
   const isInline = paneReq === undefined
   const own = pops.find(x => x.id === paneReq)
   const path = isInline ? fv.path : own?.path ?? ''
@@ -511,7 +511,7 @@ const GREEN = '#4ade80'
 const RED = '#f87171'
 
 // Barre texte (terminal) qui se remplit à mesure que le temps estimé s'écoule.
-const bar = (ratio: number, width = 12) => {
+const bar = (ratio: number, width = 18) => {
   const full = Math.round(Math.min(1, Math.max(0, ratio)) * width)
   return '━'.repeat(full) + '╌'.repeat(width - full)
 }
@@ -547,7 +547,7 @@ export function ringSvg(ratio: number, color: string, size: number) {
 // Version texte pour le terminal (pas de Svg).
 export function gaugeText(ratio: number, style: string) {
   if (style === 'Anneau') return ['○', '◔', '◑', '◕', '●'][Math.round(clamp01(ratio) * 4)]!
-  if (style === 'Segments') { const lit = Math.round(clamp01(ratio) * 10); return '▰'.repeat(lit) + '▱'.repeat(10 - lit) }
+  if (style === 'Segments') { const lit = Math.round(clamp01(ratio) * 14); return '▰'.repeat(lit) + '▱'.repeat(14 - lit) }
   return bar(ratio)
 }
 
@@ -559,7 +559,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   // Un fichier ouvert : l'éditeur prend la place du contenu, avec « ← Retour ».
   const opened = await read($, fileView)
   if (opened.inline && (await read($, files)).some(f => f.path === opened.path)) return editorBody($, e)
-  const [list, steps, v, t, p] = [await read($, calls), await read($, plan), await read($, view), await read($, now), await read($, prefs)]
+  const [list, steps, v, t, p] = await Promise.all([read($, calls), read($, plan), read($, view), read($, now), read($, prefs)])
   const ACCENT = p.accent
   const CHECK = p.checkColor ?? GREEN // couleur des ✓ validées
   const TIME = p.timeColor ?? ACCENT // couleur des temps qui défilent
@@ -569,7 +569,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const left = (c: Call) => c.estMs - (t - c.startedAt)
   const running = list.filter(c => c.endedAt === undefined)
   const total = running.reduce((s, c) => s + Math.max(0, left(c)), 0)
-  const barWidth = Math.max(80, Math.min(220, (e.props.bodyColumns ?? 40) * 5))
+  const barWidth = Math.max(120, Math.min(280, (e.props.bodyColumns ?? 40) * 6))
 
   const style = p.gauge ?? 'Ligne'
   // Jauge ; w = largeur (petite quand elle est à droite d'un titre).
@@ -589,7 +589,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     )
     return <Svg key={key} source={lineSvg(ratio, ACCENT, w)} alt={pct} width={w} height={10} />
   }
-  const TITLE_W = 64 // jauge à droite d'un titre : visible même carte réduite
+  const TITLE_W = 110 // jauge à droite d'un titre : visible même carte réduite
   const runRatio = 1 - total / Math.max(1, running.reduce((s, c) => s + c.estMs, 0))
 
   const bg = p.background in BACKGROUNDS ? BACKGROUNDS[p.background] : BACKGROUNDS.Carte!

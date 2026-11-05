@@ -180,7 +180,7 @@ function ringSvg(percent: number, color: string, size: number) {
 function gaugeText(percent: number, style: GaugeStyle) {
   if (style === 'none') return ''
   if (style === 'ring') return ['○', '◔', '◑', '◕', '●'][Math.min(4, Math.round(clampPct(percent) / 25))] ?? '○'
-  const n = 8
+  const n = 12
   const lit = Math.round((clampPct(percent) / 100) * n)
   return style === 'segments' ? `${'▰'.repeat(lit)}${'▱'.repeat(n - lit)}` : `${'━'.repeat(lit)}${'─'.repeat(n - lit)}`
 }
@@ -339,14 +339,6 @@ async function savePrefs($: EngineInterface, change: (prefs: Prefs) => Prefs, ba
   await update($, prefsAtom, prefs => change(prefs ?? base))
   const saved = await read($, prefsAtom)
   await $.store.set(PREFS_STORE_KEY, saved ?? base).catch(() => undefined)
-}
-
-async function safeStoreGet($: EngineInterface): Promise<unknown> {
-  try {
-    return await $.store.get(PREFS_STORE_KEY)
-  } catch {
-    return undefined
-  }
 }
 
 // A reading taken while drawing, before the first refresh landed; a fresh session reads $0 and an empty context.
@@ -634,9 +626,9 @@ ${skillIndex}` : RULES
 
     // ----- Desktop / editor / mobile -----
     const { Svg } = $.ui.resolve(e)
-    const lineWidth = isCompact ? 72 : 104
+    const lineWidth = isCompact ? 100 : 150
     const ringSize = isCompact ? 16 : 22
-    const segCount = isCompact ? 8 : 12
+    const segCount = isCompact ? 11 : 17
 
     const gauge = (key: string, percent: number, color: string, alt: string) => {
       if (prefs.gauge === 'none') return null
