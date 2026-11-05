@@ -98,7 +98,7 @@ Actif dès l'installation. À chaque requête, il ajoute au prompt système les 
 Plus fiable qu'un skill : le modèle relit ces règles à chaque message. Environ 435 tokens par requête, mis en cache par l'API.
 
 - **Case ☑ actif / ☐ inactif** dans la carte ÉCONOMIE : un clic active ou coupe le mode (gardé pour toutes les sessions).
-- **Estimation** des tokens économisés sur la session : tokens de réponse écrits avec le mode × 40 % ÷ 60 % (taux moyen, pas une mesure exacte).
+- **Estimation** des tokens économisés sur la session : tokens de réponse écrits avec le mode × 40 % ÷ 60 % (taux moyen, pas une mesure exacte). Gardée pour chaque session, même si tu fermes et rouvres l'app.
 - **Compactage automatique** : quand le contexte dépasse 400 000 tokens, la conversation est compactée seule (comme `/compact`), entre deux tours.
 - ⚙ → Afficher → **Économie** masque ou montre la carte.
 - Les avertissements de sécurité, questions et tout ce qui est écrit dans des fichiers restent en phrases complètes.

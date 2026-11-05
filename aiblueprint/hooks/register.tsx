@@ -268,6 +268,7 @@ async function refresh($: EngineInterface): Promise<void> {
     if ((await read($, prefsAtom)) === null) await loadPrefs($)
     const [usage, now] = await Promise.all([$.session.usage(), $.clock.now()])
     await rememberLimits($, usage)
+    await restoreOut($, usage.startedAt)
     const next = compute(usage, now)
     await update($, usageAtom, () => next)
     await alertFiveHour($, next)
@@ -377,6 +378,33 @@ function ensureTicking($: EngineInterface) {
   void refresh($)
 }
 
+// ---------- Tokens économisés : gardés par session, même après fermeture de l'app ----------
+
+// Clé = début de la session : le même quand on rouvre (reprise) la conversation.
+const ECO_KEY = 'ecoSessions'
+let restoredFor: number | undefined
+type EcoSessions = Record<string, number>
+
+async function restoreOut($: EngineInterface, startedAt: number) {
+  if (restoredFor === startedAt) return
+  restoredFor = startedAt
+  const all = ((await $.store.get(ECO_KEY).catch(() => undefined)) ?? {}) as EcoSessions
+  const saved = all[String(startedAt)]
+  if (typeof saved === 'number') await update($, outAtom, n => Math.max(n, saved))
+}
+
+async function addOut($: EngineInterface, out: number) {
+  const startedAt = (await $.session.usage().catch(() => undefined))?.startedAt
+  if (startedAt !== undefined) await restoreOut($, startedAt) // avant d'ajouter, pour ne pas écraser l'ancien total
+  const total = await update($, outAtom, n => n + out)
+  if (startedAt === undefined) return
+  const all = ((await $.store.get(ECO_KEY).catch(() => undefined)) ?? {}) as EcoSessions
+  all[String(startedAt)] = total
+  // On garde les 50 sessions les plus récentes.
+  const kept = Object.fromEntries(Object.entries(all).sort(([a], [b]) => Number(b) - Number(a)).slice(0, 50))
+  await $.store.set(ECO_KEY, kept).catch(() => undefined)
+}
+
 // ---------- Compactage automatique (mode économe) ----------
 
 // Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
@@ -437,7 +465,7 @@ export const register: Register = (on, rawOptions) => {
     const completed = await next(e)
     const out = e.usage?.output_tokens ?? 0
     const isEconomy = ((await read($, prefsAtom)) ?? base).economy
-    if (out > 0 && isEconomy) await update($, outAtom, n => n + out)
+    if (out > 0 && isEconomy) await addOut($, out)
     if (isEconomy) await autoCompact($)
     ensureTicking($)
     void refresh($)

@@ -165,3 +165,27 @@ test('mode économe : compactage automatique à 400k tokens de contexte, une seu
   await clock.advance(2_100)
   expect(compacts).toBe(1)
 })
+
+test('tokens économisés gardés pour la session après fermeture et réouverture de l’app', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const START = NOW - 3_600_000 // session reprise : même début qu'avant la fermeture
+  const kept: Record<string, unknown> = { ecoSessions: { [String(START)]: 6000, '123': 99 } }
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('session.usage', () => ({ value: { ...USAGE, startedAt: START } }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+
+  // Réouverture : le total d'avant revient (6000 écrits ≈ 4k économisés).
+  const ui = await mountBand($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /~4(\.0)?k/ })).toBeDefined()
+  await ui.unmount()
+
+  // Et continue de monter : 6000 + 3000 = 9000 gardés pour cette session, les autres intactes.
+  await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't', usage: { input_tokens: 0, output_tokens: 3000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' } } as never)
+  expect((kept.ecoSessions as Record<string, number>)[String(START)]).toBe(9000)
+  expect((kept.ecoSessions as Record<string, number>)['123']).toBe(99)
+})
