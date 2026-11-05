@@ -438,11 +438,24 @@ async function scanSkills($: EngineInterface) {
 
 // Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
 let isCompacting = false
+// Taille du contexte en tokens ; le moteur donne parfois seulement le pourcentage (d'où le 561k non compacté).
+async function contextNow($: EngineInterface) {
+  const c = (await $.session.usage().catch(() => undefined))?.context
+  if (!c) return 0
+  return c.tokens ?? Math.round(((c.percent ?? 0) / 100) * c.window)
+}
+
 async function autoCompact($: EngineInterface) {
   if (isCompacting) return
-  const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens ?? 0
+  const tokens = await contextNow($)
   if (tokens < COMPACT_AT) return
   isCompacting = true
+  const done = (skip?: string) => {
+    if (!skip) $.ui.toast(`Contexte à ${Math.round(tokens / 1000)}k tokens : conversation compactée pour économiser.`)
+  }
+  // Fin de réponse : le moteur l'autorise ; s'il refuse encore, on réessaie toutes les 2 s.
+  const first = await $.session.compact().then(r => r, () => undefined)
+  if (first) { isCompacting = false; return done(first.skip) }
   let tries = 0
   let isTrying = false // un seul essai à la fois (un compactage dure plus de 2 s)
   const timer = $.clock.every(2000, () => {
@@ -452,7 +465,7 @@ async function autoCompact($: EngineInterface) {
     void $.session.compact().then(({ skip }) => {
       isCompacting = false
       timer.cancel()
-      if (!skip) $.ui.toast(`Contexte à ${Math.round(tokens / 1000)}k tokens : conversation compactée pour économiser.`)
+      done(skip)
     }).catch(() => {}).finally(() => { isTrying = false }) // un tour tourne encore : on réessaie dans 2 s
   })
 }

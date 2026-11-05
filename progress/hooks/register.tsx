@@ -729,7 +729,6 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
           </Button>,
           p.showTimes && time,
         )}
-        {isNow && !isDone && gauge('g-' + c.id, 1 - left(c) / c.estMs)}
         {isDetail && (
           <Box flexDirection="column" paddingLeft={2} paddingY="xs">
             {c.detail.filter(Boolean).map(line => (
@@ -749,6 +748,8 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     line('cap', fold('actions', 'Actions'), p.showTimes && shown.length > 0 && (running.length
       ? <Text size="footnote" weight="semibold" color={TIME} tabular>~{fmt(total)}</Text>
       : <Text size="footnote" weight="semibold" color={CHECK} tabular>✓ {fmt(spent)}</Text>)),
+    // Jauge sur le titre Actions seulement (pas sur chaque sous-action).
+    running.length > 0 && gauge('g-actions', 1 - total / Math.max(1, running.reduce((s, c) => s + c.estMs, 0))),
     !isClosed('actions') && shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
     ...(isClosed('actions') ? [] : groups).map(({ cat, items }) => {
       const active = items.filter(c => c.endedAt === undefined)

@@ -157,12 +157,13 @@ test('mode économe : compactage automatique à 400k tokens de contexte, une seu
   on('fs.write', () => undefined)
   on('store.get', () => ({ value: undefined }) as never)
   on('store.set', () => ({ value: undefined }) as never)
-  on('session.usage', () => ({ value: { ...USAGE, context: { tokens: 450_000, window: 1_000_000, percent: 45 } } }) as never)
+  // Après un compactage, le contexte redescend (50k).
+  on('session.usage', () => ({ value: { ...USAGE, context: compacts ? { tokens: 50_000, window: 1_000_000, percent: 5 } : { tokens: 450_000, window: 1_000_000, percent: 45 } } }) as never)
   on('session.compact', () => { compacts++; return { skip: 'test' } as never })
   on('turn.complete', () => ({ text: 'ok' }) as never)
   const done = { answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't' } as never
   await $.turn.complete(done)
-  await $.turn.complete(done) // déjà en cours : pas de second compactage
+  await $.turn.complete(done) // contexte redescendu : pas de second compactage
   await clock.advance(2_100)
   await clock.advance(2_100)
   expect(compacts).toBe(1)
@@ -249,4 +250,17 @@ test('terminal : économie affichée en 4.1K avec sa case, styles de jauge', asy
   for (const g of ['segments', 'ring', 'none', 'line']) await ui.press({ key: `gauge-${g}` })
   expect((kept.prefs as { gauge: string }).gauge).toBe('line')
   await ui.unmount()
+})
+
+test('compactage à la fin de la réponse à 561k (contexte donné seulement en pourcentage)', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  let compacts = 0
+  on('fs.write', () => undefined)
+  on('store.get', () => ({ value: undefined }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
+  on('session.usage', () => ({ value: { ...USAGE, context: { window: 1_000_000, percent: 56.1 } } }) as never)
+  on('session.compact', () => { compacts++; return { skip: 'test' } as never })
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't' } as never)
+  expect(compacts).toBe(1) // tout de suite, sans attendre
 })

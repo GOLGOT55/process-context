@@ -1,6 +1,6 @@
 {
   "name": "progress",
-  "version": "1.13.1",
+  "version": "1.13.2",
   "description": "Panneau Progress à droite : ce que Claude fait en direct, par catégorie, avec temps estimé, détails et historique.",
   "author": {
     "name": "GOLGOT55",

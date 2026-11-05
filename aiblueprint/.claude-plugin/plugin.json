@@ -1,6 +1,6 @@
 {
   "name": "aiblueprint",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Carte Contexte au-dessus de la saisie : contexte, coût, limites 5 h et semaine, et mode économe (réponses courtes, code minimal, compactage à 400k, tokens économisés).",
   "author": {
     "name": "GOLGOT55",
