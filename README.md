@@ -9,6 +9,18 @@ Deux mods pour **Claude Code** qui montrent ce qui se passe pendant une session 
 
 ## Installation
 
+### En une seule commande
+
+Dans un terminal (PowerShell, bash ou zsh), installe les deux mods d'un coup :
+
+```bash
+claude plugin install progress --marketplace GOLGOT55/process-context; claude plugin install aiblueprint --marketplace GOLGOT55/process-context
+```
+
+Puis ouvre une nouvelle session Claude Code : les deux mods sont actifs.
+
+### Une par une
+
 Dans Claude Code, à l'invite d'une session dans un terminal :
 
 ```
