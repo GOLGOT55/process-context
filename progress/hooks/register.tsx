@@ -152,7 +152,13 @@ async function ensureOpen($: EngineInterface, isAsked = false) {
   const p = await update($, prefs, x => ({ ...x, ...saved }))
   // La personnalisation reste masquée tant qu'on ne clique pas sur ⚙.
   await update($, view, x => ({ ...x, settings: false }))
-  await $.ui.open({ id: PANE, title: 'Progress', columns: p.width })
+  try {
+    if ((await $.session.surfaces()).length === 0) throw new Error('no surface yet')
+    await $.ui.open({ id: PANE, title: 'Progress', columns: p.width })
+  } catch (err) {
+    isOpened = false // pas encore d'écran attaché (début de session) : on réessaie au prochain événement
+    throw err
+  }
 }
 
 // Change un réglage, le garde pour les prochaines sessions, et ajuste la largeur.
