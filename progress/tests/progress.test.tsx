@@ -19,7 +19,6 @@ const engine = (on: any) => {
   on('clock.now', () => ({ value: 1000 }))
   on('clock.every', () => ({ value: undefined }))
   on('ui.open', (_: unknown, e: unknown) => { opened.push(e); return { value: { isPlaced: true } } })
-  on('session.surfaces', () => ({ value: ['desktop'] }))
 }
 
 test('le panneau à droite suit les actions et se personnalise', async ($, on) => {
