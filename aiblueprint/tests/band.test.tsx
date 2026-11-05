@@ -78,3 +78,27 @@ test('5h et Semaine s’affichent dès l’ouverture, avec les dernières limite
   expect(await ui.find({ type: 'Text', text: /^7%$/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('coût et durée de la session, et alerte unique quand la limite 5h passe 80 %', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const toasts: string[] = []
+  const kept: Record<string, unknown> = {}
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('ui.toast', (_: unknown, e: { text: string }) => { toasts.push(e.text); return { value: undefined } as never })
+  const HIGH = { ...USAGE, startedAt: NOW - 42 * 60_000, rateLimits: [{ kind: 'five_hour', percentUsed: 85, resetsAt: '2026-10-05T03:01:00Z' }, USAGE.rateLimits[1]] }
+  on('session.usage', () => ({ value: HIGH }) as never)
+  on('session.measure', () => ({ changed: [] }) as never)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+  await $.session.measure({ context: USAGE.context, rateLimits: [] } as never)
+  await clock.advance(1_000)
+
+  const ui = await mountBand($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /\$3\.48.*42 min/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /⚠ 85%/ })).toBeDefined()
+  await ui.unmount()
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toContain('85')
+})

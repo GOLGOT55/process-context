@@ -114,3 +114,25 @@ test('style de jauge : ligne, segments, anneau ou aucune', async ($, on) => {
   expect(await term.find({ type: 'Text', text: /━/ })).toBeDefined()
   await term.unmount()
 })
+
+test('fichiers touchés : +/− par fichier, détail au clic, gardés d’une demande à l’autre', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'a\nb', new_string: 'a\nb\nc' })
+  await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'x', new_string: 'y' })
+  await $.tool.call({ tool: 'Write', file_path: '/src/new.ts', content: '1\n2\n3\n4' })
+  await $.prompt.submit({ text: 'suite', wait: false, origin: { kind: 'composer' } })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /Fichiers touchés · 2/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\+4$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^−3$/ })).toBeDefined()
+  await ui.press({ key: 'f:/src/app.ts' })
+  expect(await ui.find({ type: 'Text', text: /Modifs\s+2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\+  y$/ })).toBeDefined()
+  await ui.press({ key: 'gear' })
+  await ui.press({ key: 'opt:showFiles' })
+  expect(await ui.find({ type: 'Text', text: /Fichiers touchés/i })).toBeUndefined()
+  await ui.unmount()
+})

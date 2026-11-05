@@ -56,7 +56,7 @@ const BACKGROUNDS: readonly { value: Background; label: string }[] = [
 // The show/hide switches of the ⚙ panel, in order.
 const TOGGLES = [
   { field: 'showContext', label: 'Contexte' },
-  { field: 'showSession', label: 'Coût' },
+  { field: 'showCostTime', label: 'Coût & temps' },
   { field: 'showFiveHour', label: '5h' },
   { field: 'showWeek', label: 'Semaine' },
   { field: 'showPace', label: 'Rythme' },
@@ -118,6 +118,12 @@ const formatCost = (cost: number) => `$${cost < 10 ? cost.toFixed(2) : cost.toFi
 const clampPct = (percent: number) => Math.max(0, Math.min(100, percent))
 
 // One unit only, the biggest that fits: 6j, 13h, 45m.
+// Durée de la session : « 42 min », « 1h05 ».
+export function formatDuration(ms: number) {
+  const minutes = Math.floor(ms / 60_000)
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
+}
+
 function formatResetsIn(ms: number) {
   const minutes = Math.max(0, Math.floor(ms / 60_000))
   if (minutes < 60) return `${minutes}m`
@@ -195,6 +201,21 @@ function contextOf(usage: SessionUsage): Usage['context'] {
 const LIMITS_STORE_KEY = 'limits'
 let lastLimits: SessionUsage['rateLimits'] | undefined
 
+// Alerte une seule fois par fenêtre de 5 h quand la limite passe 80 %.
+const ALERT_AT = 80
+async function alertFiveHour($: EngineInterface, usage: Usage) {
+  const s = usage.session
+  if (!s || s.percent < ALERT_AT) return
+  // La fenêtre est identifiée par son heure de remise à zéro, arrondie à la minute.
+  const now = await $.clock.now()
+  const windowKey = s.resetsInMs !== undefined ? String(Math.round((now + s.resetsInMs) / 60_000)) : 'inconnue'
+  const done = await $.store.get('alerted5h').catch(() => undefined)
+  if (done === windowKey) return
+  await $.store.set('alerted5h', windowKey).catch(() => undefined)
+  const reset = s.resetsInMs !== undefined ? ` · remise à zéro dans ${formatResetsIn(s.resetsInMs)}` : ''
+  $.ui.toast(`⚠ Limite 5h à ${Math.round(s.percent)} %${reset}`)
+}
+
 async function rememberLimits($: EngineInterface, usage: SessionUsage) {
   if (usage.rateLimits.length > 0) {
     lastLimits = usage.rateLimits
@@ -212,6 +233,7 @@ function compute(raw: SessionUsage, now: number): Usage {
     context: contextOf(usage),
     session: limitOf(usage, 'five_hour', SESSION_MS, now),
     week: limitOf(usage, 'seven_day', WEEK_MS, now),
+    ...(usage.startedAt ? { durationMs: Math.max(0, now - usage.startedAt) } : {}),
   }
 }
 
@@ -242,6 +264,7 @@ async function refresh($: EngineInterface): Promise<void> {
     await rememberLimits($, usage)
     const next = compute(usage, now)
     await update($, usageAtom, () => next)
+    await alertFiveHour($, next)
     await seedLimitsCache($, usage, now)
   } catch {
     // keep the last band
@@ -259,7 +282,7 @@ async function refresh($: EngineInterface): Promise<void> {
 function basePrefs(options: Options): Prefs {
   return {
     showContext: true,
-    showSession: options.showSession,
+    showCostTime: options.showSession,
     showFiveHour: options.showFiveHour,
     showWeek: options.showWeek,
     showPace: options.showPace,
@@ -282,7 +305,7 @@ function asPrefs(value: unknown, base: Prefs): Prefs {
   const bool = (key: keyof Prefs) => (typeof s[key] === 'boolean' ? (s[key] as boolean) : (base[key] as boolean))
   return {
     showContext: bool('showContext'),
-    showSession: bool('showSession'),
+    showCostTime: bool('showCostTime'), // nouveau nom : l'ancien « Coût » masqué revient avec la durée
     showFiveHour: bool('showFiveHour'),
     showWeek: bool('showWeek'),
     showPace: bool('showPace'),
@@ -455,7 +478,7 @@ export const register: Register = (on, rawOptions) => {
                 <Text bold>{ctxText(context)}</Text>
               </Text>
             )}
-            {prefs.showSession && <Text key="cost" bold color={accent}>{formatCost(usage.cost)}</Text>}
+            {prefs.showCostTime && <Text key="cost" bold color={accent}>{formatCost(usage.cost)}{usage.durationMs !== undefined ? ` · ${formatDuration(usage.durationMs)}` : ''}</Text>}
             {limits.map(({ key, label, limit }) => (
               <Text key={key}>
                 <Text dimColor>{label} </Text>
@@ -524,10 +547,10 @@ export const register: Register = (on, rawOptions) => {
         ],
         gauge('g-context', context.percent, ctxColor, `Contexte ${Math.round(context.percent)}%`),
       ),
-      prefs.showSession && (
+      prefs.showCostTime && (
         <Box key="cost" flexDirection="column" gap={0}>
           <Text size="caption" dimColor weight="medium">SESSION</Text>
-          <Text weight="semibold" color={accent}>{formatCost(usage.cost)}</Text>
+          <Text weight="semibold" color={accent}>{formatCost(usage.cost)}{usage.durationMs !== undefined && <Text size="footnote" dimColor> · {formatDuration(usage.durationMs)}</Text>}</Text>
         </Box>
       ),
       ...limits.map(({ key, label, limit }) => {
@@ -536,7 +559,7 @@ export const register: Register = (on, rawOptions) => {
           key,
           label,
           [
-            <Text key="p" weight="semibold">{Math.round(limit.percent)}%</Text>,
+            <Text key="p" weight="semibold">{key === 'five-hour' && limit.percent >= ALERT_AT ? '⚠ ' : ''}{Math.round(limit.percent)}%</Text>,
             prefs.showPace && limit.pace !== undefined && <Text key="pace" size="footnote" color={paceColor(limit.pace)}>{formatPace(limit.pace)}</Text>,
             prefs.showReset && limit.resetsInMs !== undefined && <Text key="reset" size="footnote" dimColor>↻ {formatResetsIn(limit.resetsInMs)}</Text>,
           ],

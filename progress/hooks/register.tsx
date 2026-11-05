@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, RenderInput, Timer } from 'claude-code'
 
-import type { Call, Prefs, Step, View } from '../types'
+import type { Call, FileTouch, Prefs, Step, View } from '../types'
 
 const PANE = 'progress'
 export const COLORS: Record<string, string> = {
@@ -25,6 +25,9 @@ const view = atom(
   { shape: 'view-2' },
 )
 const now = atom({ plugin: 'progress', key: 'now' } as const, 0)
+// Fichiers modifiés pendant toute la conversation (pas vidés à chaque demande).
+const files = atom({ plugin: 'progress', key: 'files' } as const, [], { shape: 'files-1' })
+const FILE_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'MultiEdit']
 
 const PLAN_TOOLS = ['mcp__ccd_turn__update_plan', 'TodoWrite']
 // Durées de départ (ms) tant qu'aucune moyenne réelle n'est enregistrée.
@@ -104,6 +107,26 @@ export function describe(tool: string, a: Args): Pick<Call, 'category' | 'label'
     label: pretty(tool),
     detail: Object.entries(a).filter(([k]) => k !== 'tool' && k !== 'tool_use_id').slice(0, 6).map(([k, v]) => `${k.padEnd(8)} ${clip(typeof v === 'string' ? v : JSON.stringify(v), 120)}`),
   }
+}
+
+const lineCount = (s: string) => (s ? s.split('\n').length : 0)
+
+// Ajoute une modification réussie au fichier touché : lignes +/−, nombre de modifs, dernier aperçu.
+export function touchFile(list: FileTouch[], tool: string, a: Args): FileTouch[] {
+  const path = str(a, 'file_path') || str(a, 'notebook_path')
+  if (!path) return list
+  const edits = Array.isArray(a.edits) ? (a.edits as Args[]) : [a]
+  const isWrite = tool === 'Write'
+  const added = isWrite ? lineCount(str(a, 'content')) : edits.reduce((s, x) => s + lineCount(str(x, 'new_string') || str(x, 'new_source')), 0)
+  const removed = isWrite ? 0 : edits.reduce((s, x) => s + lineCount(str(x, 'old_string')), 0)
+  const last = isWrite
+    ? [`Écrit    ${added} lignes`]
+    : edits.slice(-1).flatMap(x => [...firstLines(str(x, 'old_string'), 4).map(l => '−  ' + l), ...firstLines(str(x, 'new_string') || str(x, 'new_source'), 4).map(l => '+  ' + l)])
+  const prev = list.find(f => f.path === path)
+  const next: FileTouch = prev
+    ? { ...prev, added: prev.added + added, removed: prev.removed + removed, edits: prev.edits + 1, last }
+    : { path, added, removed, edits: 1, last, ...(isWrite ? { written: true } : {}) }
+  return [...list.filter(f => f.path !== path), next].slice(-100)
 }
 
 // Fin lisible du résultat d'un outil (texte brut, pas du JSON échappé).
@@ -230,6 +253,7 @@ export const register: Register = on => {
     const list = await update($, calls, l =>
       l.map(c => (c.id === call.id ? { ...c, endedAt, ...(failed ? { failed } : {}), detail: [...c.detail, ...tail] } : c)),
     )
+    if (!failed && FILE_TOOLS.includes(e.tool)) await update($, files, l => touchFile(l, e.tool, a))
     const prev = avg[e.tool] ?? { n: 0, ms: 0 }
     const n = Math.min(prev.n + 1, 20) // moyenne glissante sur ~20 appels
     await $.store.set('avg', { ...avg, [e.tool]: { n, ms: prev.ms + (endedAt - startedAt - prev.ms) / n } })
@@ -398,7 +422,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text dimColor={current !== c}> {name}</Text>
       </Button>
     ))
-  const toggleChip = (key: 'showSummary' | 'showPlan' | 'showHistory' | 'showTimes', label: string) => {
+  const toggleChip = (key: 'showSummary' | 'showPlan' | 'showHistory' | 'showTimes' | 'showFiles', label: string) => {
     const isOn = p[key] !== false
     return chip('opt:' + key, `${isOn ? '✓' : '+'} ${label}`, isOn, () => pick(x => ({ ...x, [key]: x[key] === false })))
   }
@@ -416,7 +440,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     section('s-gauge', 'Jauge', GAUGES.map(name => chip('gauge:' + name, name, style === name, () => pick(x => ({ ...x, gauge: name }))))),
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
-    section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps')]),
+    section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps'), toggleChip('showFiles', 'Fichiers')]),
   ])
   if (v.hidden) return <Box flexDirection="column" gap="sm">{header}{settings}</Box>
 
@@ -499,12 +523,50 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     }),
   ])
 
+  // ----- Fichiers touchés (toute la conversation) -----
+  const touched = await read($, files)
+  const plusMinus = (key: string, added: number, removed: number) => (
+    <Text key={key} size="footnote" tabular>
+      <Text color={CHECK}>+{added}</Text> <Text color={RED}>−{removed}</Text>
+    </Text>
+  )
+  const filesCard = p.showFiles !== false && touched.length > 0 && card('files', [
+    <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
+      {caption('cap', `Fichiers touchés · ${touched.length}`)}
+      {plusMinus('tot', touched.reduce((s, f) => s + f.added, 0), touched.reduce((s, f) => s + f.removed, 0))}
+    </Box>,
+    // Les plus récents en haut.
+    ...[...touched].reverse().map(f => {
+      const isDetail = v.opened.includes('f:' + f.path)
+      return (
+        <Box key={'file:' + f.path} flexDirection="column" gap="xs" paddingLeft={1}>
+          <Box flexDirection="row" alignItems="center" gap="sm">
+            <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              <Button key={'f:' + f.path} plain onPress={() => set(x => ({ ...x, opened: toggle(x.opened, 'f:' + f.path) }))}>
+                <Text wrap="truncate-end"><Text dimColor>{isDetail ? '▾' : '▸'}</Text> <Text color={ACCENT}>{f.written ? '✚' : '✎'}</Text> {base(f.path)}</Text>
+              </Button>
+            </Box>
+            <Box flexShrink={0}>{plusMinus('pm', f.added, f.removed)}</Box>
+          </Box>
+          {isDetail && (
+            <Box flexDirection="column" paddingLeft={2} paddingY="xs">
+              <Text dimColor mono size="footnote" wrap="truncate-middle">{`Fichier  ${f.path}`}</Text>
+              <Text dimColor mono size="footnote">{`Modifs   ${f.edits}`}</Text>
+              {f.last.map((l, i) => <Text key={'d' + i} dimColor mono size="footnote" wrap="truncate-end">{l}</Text>)}
+            </Box>
+          )}
+        </Box>
+      )
+    }),
+  ])
+
   return (
     <Box flexDirection="column" gap="sm">
       {header}
       {settings}
       {planCard}
       {actionsCard}
+      {filesCard}
     </Box>
   )
 }

@@ -4,8 +4,8 @@ Deux mods pour **Claude Code** qui montrent ce qui se passe pendant une session 
 
 | Mod | Où | Ce qu'il affiche |
 | --- | --- | --- |
-| **Progress** (`progress`) | Panneau à droite de la conversation | Les actions de Claude en direct, rangées par catégorie, avec un temps estimé, le détail de chaque action et l'historique |
-| **Contexte** (`aiblueprint`) | Carte au-dessus de la zone de saisie | Le contexte utilisé, les limites d'usage sur 5 h et sur la semaine, le rythme et l'heure de remise à zéro |
+| **Progress** (`progress`) | Panneau à droite de la conversation | Les actions de Claude en direct, étape par étape avec ✓, le temps estimé, le détail de chaque action et les fichiers touchés |
+| **Contexte** (`aiblueprint`) | Carte au-dessus de la zone de saisie | Le contexte utilisé, le coût et la durée de la session, les limites 5 h et semaine (alerte à 80 %), le rythme et l'heure de remise à zéro |
 
 ## Installation
 
@@ -51,6 +51,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
+- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total ; un clic montre le chemin, le nombre de modifications et le dernier changement.
 - Flèches ▸/▾ pour replier, œil ◉ pour réduire le panneau.
 
 ### Personnaliser
@@ -62,13 +63,15 @@ Bouton **⚙** (masqué par défaut, **Masquer** pour le refermer) :
 - Jauge : ligne, segments, anneau ou aucune
 - Fond : carte, noir, ardoise, transparent
 - Largeur : étroite, normale, large
-- Afficher ou non : résumé, plan, historique, temps
+- Afficher ou non : résumé, plan, historique, temps, fichiers
 
 Les réglages sont gardés pour toutes les sessions.
 
 ## Contexte
 
 - Contexte utilisé (tokens et pourcentage), limites 5 h et semaine avec jauge, rythme (+/−) et heure de remise à zéro.
+- **Coût & temps** : coût de la session et depuis combien de temps elle tourne.
+- **Alerte 80 %** : une notification (une seule fois par fenêtre) et un ⚠ quand la limite 5 h dépasse 80 %.
 - 5 h et semaine s'affichent dès l'ouverture d'une conversation : les dernières valeurs connues sont gardées jusqu'à la première réponse.
 - Bouton **⚙** pour choisir ce qui s'affiche, le style de jauge, la couleur, la taille et le fond.
 - Options aussi réglables dans les paramètres de Claude Code (`pluginConfigs`).

@@ -14,8 +14,11 @@ export type Step = { title: string; status: 'pending' | 'in_progress' | 'complet
 
 export type View = { hidden: boolean; folded: string[]; opened: string[]; settings: boolean }
 
+// Un fichier modifié pendant la conversation : lignes ajoutées/retirées, nombre de modifs, dernier aperçu.
+export type FileTouch = { path: string; added: number; removed: number; edits: number; last: string[]; written?: boolean }
+
 // Réglages de la fenêtre, gardés d'une session à l'autre (copiés dans $.store).
-export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string }
+export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string; showFiles?: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -25,6 +28,7 @@ declare module 'claude-code' {
       view: Shaped<View>
       prefs: Shaped<Prefs>
       now: number
+      files: Shaped<FileTouch[]>
     }
   }
 }
