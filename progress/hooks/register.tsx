@@ -37,7 +37,7 @@ const DEFAULT_MS: Record<string, number> = {
   Read: 2000, Grep: 2500, Glob: 1500, Edit: 3000, Write: 4000,
   Bash: 8000, PowerShell: 8000, WebSearch: 6000, WebFetch: 8000, Agent: 60000,
 }
-const ORDER = ['Lecture', 'Recherche', 'Web', 'Modifications', 'Commandes', 'Agents', 'Autre']
+const ORDER = ['Lecture', 'Recherche', 'Web', 'Modifications', 'Commandes', 'Agents', 'Skills', 'Autre']
 // Outils internes de l'app (plan, récap, chapitres) : du bruit, on ne les liste pas.
 const HIDDEN_TOOLS = /^mcp__ccd_/
 
@@ -92,7 +92,7 @@ export function describe(tool: string, a: Args): Pick<Call, 'category' | 'label'
     case 'Agent':
       return { category: 'Agents', label: clip(str(a, 'description') || 'Sous-agent', 48), detail: firstLines(str(a, 'prompt'), 6) }
     case 'Skill':
-      return { category: 'Autre', label: `Skill ${str(a, 'skill')}`, detail: [`Skill    ${str(a, 'skill')}`] }
+      return { category: 'Skills', label: str(a, 'skill') || 'Skill', detail: [`Skill    ${str(a, 'skill')}`, ...(str(a, 'args') ? [`Demande  ${clip(str(a, 'args'), 140)}`] : [])] }
     case 'ToolSearch':
       return { category: 'Autre', label: 'Charge des outils', detail: [`Requête  ${str(a, 'query')}`] }
   }
@@ -449,6 +449,7 @@ export const register: Register = on => {
 }
 
 const ICON: Record<string, string> = {
+  Skills: '✦',
   Lecture: '≡', Recherche: '⌕', Web: '◍', Modifications: '✎', Commandes: '›_', Agents: '◇', Autre: '·',
 }
 
@@ -631,15 +632,24 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   ])
   if (v.hidden) return <Box flexDirection="column" gap="sm">{header}{settings}</Box>
 
+  // Titre de carte cliquable : ▾ ouverte, ▸ réduite (on ne voit plus que le titre).
+  const closed = v.cardsClosed ?? []
+  const isClosed = (key: string) => closed.includes(key)
+  const fold = (key: string, title: string) => (
+    <Button key={'fold:' + key} plain dimColor onPress={() => set(x => ({ ...x, cardsClosed: toggle(x.cardsClosed ?? [], key) }))}>
+      <Text size="caption" dimColor weight="medium">{isClosed(key) ? '▸' : '▾'} {title.toUpperCase()}</Text>
+    </Button>
+  )
+
   // ----- Plan -----
   const doneSteps = steps.filter(s => s.status === 'completed').length
   const planCard = p.showPlan && steps.length > 0 && card('plan', [
     <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
-      {caption('cap', 'Plan')}
+      {fold('plan', 'Plan')}
       <Text size="footnote" dimColor tabular>{doneSteps}/{steps.length}</Text>
     </Box>,
-    gauge('g-plan', doneSteps / steps.length),
-    ...steps.map((s, i) => (
+    !isClosed('plan') && gauge('g-plan', doneSteps / steps.length),
+    ...(isClosed('plan') ? [] : steps).map((s, i) => (
       <Text key={'step' + i} wrap="truncate-end">
         <Text color={s.status === 'completed' ? CHECK : s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status === 'pending'}>{s.status === 'completed' ? '✓' : s.status === 'in_progress' ? '●' : '○'}</Text>
         <Text color={s.status === 'in_progress' ? ACCENT : 'gray'} dimColor={s.status !== 'in_progress'}>  {s.title}</Text>
@@ -683,11 +693,11 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   // Temps total de toutes les actions : restant pendant le travail, passé une fois tout fini.
   const spent = shown.reduce((s, c) => s + (c.endedAt !== undefined ? c.endedAt - c.startedAt : 0), 0)
   const actionsCard = card('actions', [
-    line('cap', caption('t', 'Actions'), p.showTimes && shown.length > 0 && (running.length
+    line('cap', fold('actions', 'Actions'), p.showTimes && shown.length > 0 && (running.length
       ? <Text size="footnote" weight="semibold" color={TIME} tabular>~{fmt(total)}</Text>
       : <Text size="footnote" weight="semibold" color={CHECK} tabular>✓ {fmt(spent)}</Text>)),
-    shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
-    ...groups.map(({ cat, items }) => {
+    !isClosed('actions') && shown.length === 0 && <Text key="empty" dimColor>Rien pour l'instant. Les actions de Claude apparaîtront ici.</Text>,
+    ...(isClosed('actions') ? [] : groups).map(({ cat, items }) => {
       const active = items.filter(c => c.endedAt === undefined)
       const done = items.filter(c => c.endedAt !== undefined)
       const first = active[0]
@@ -699,13 +709,13 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box key={'grp:' + cat} flexDirection="column" gap="xs">
           {line('h',
             <Button key={'cat:' + cat} plain dimColor={active.length === 0} onPress={() => set(x => ({ ...x, unfolded: toggle(x.unfolded, cat) }))}>
-              <Text wrap="truncate-end">{isOpen ? '▾' : '▸'} <Text color={active.length ? ACCENT : 'gray'}>{ICON[cat] ?? '·'}</Text> {cat} <Text dimColor>({items.length})</Text></Text>
+              <Text wrap="truncate-end">{isOpen ? '▾' : '▸'} {active.length === 0 && <Text color={CHECK}>✓ </Text>}<Text color={active.length ? ACCENT : 'gray'}>{ICON[cat] ?? '·'}</Text> {cat} <Text dimColor>({items.length})</Text></Text>
             </Button>,
             p.showTimes && <Text size="footnote" color={active.length ? TIME : CHECK} tabular>{active.length ? '~' + fmt(catLeft) : '✓ ' + fmt(catSpent)}</Text>,
           )}
           {/* Étape par étape, dans l'ordre où Claude les lance. */}
-          {/* Fermée : l'action en cours (temps qui défile) ; sinon la dernière finie, avec son ✓. */}
-          {(isOpen ? items : active.length ? active : done.slice(-1)).map(c => row(c, c === first))}
+          {/* Fermée : seulement l'action en cours (temps qui défile) ; finie, elle se range et la catégorie prend le ✓. */}
+          {(isOpen ? items : active).map(c => row(c, c === first))}
         </Box>
       )
     }),
@@ -719,10 +729,10 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   }
   const guardCard = p.guard !== false && guarded.length > 0 && card('guard', [
     <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
-      {caption('cap', `Garde-fou · ${guarded.length}`)}
+      {fold('guard', `Garde-fou · ${guarded.length}`)}
       <Text size="footnote" color={CHECK}>● actif</Text>
     </Box>,
-    ...[...guarded].reverse().map((g, i) => {
+    ...(isClosed('guard') ? [] : [...guarded].reverse()).map((g, i) => {
       const id = `g:${g.at}:${i}`
       const isDetail = v.opened.includes(id)
       const d = DECISION[g.decision]
@@ -755,11 +765,11 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   )
   const filesCard = p.showFiles !== false && touched.length > 0 && card('files', [
     <Box key="top" flexDirection="row" justifyContent="space-between" alignItems="center">
-      {caption('cap', `Fichiers touchés · ${touched.length}`)}
+      {fold('files', `Fichiers touchés · ${touched.length}`)}
       {plusMinus('tot', touched.reduce((s, f) => s + f.added, 0), touched.reduce((s, f) => s + f.removed, 0))}
     </Box>,
     // Les plus récents en haut.
-    ...[...touched].reverse().map(f => {
+    ...(isClosed('files') ? [] : [...touched].reverse()).map(f => {
       const isDetail = v.opened.includes('f:' + f.path)
       return (
         <Box key={'file:' + f.path} flexDirection="column" gap="xs" paddingLeft={1}>

@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { buildSkillIndex, categorize, parseSkill } from '../hooks/econome.js'
+
 const NOW = Date.parse('2026-10-05T01:00:00Z')
 
 const USAGE = {
@@ -138,7 +140,7 @@ test('mode économe : actif par défaut, estimation des tokens économisés, cas
   await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't', usage: { input_tokens: 0, output_tokens: 6000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' } } as never)
   const ui = await mountBand($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /^ÉCONOMIE$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /~4(\.0)?k/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /~4\.0K/ })).toBeDefined()
   expect((await ui.find({ type: 'Button', key: 'eco-toggle' }))?.text).toContain('☑')
 
   // Case décochée : mode coupé, règles retirées, choix gardé.
@@ -181,11 +183,51 @@ test('tokens économisés gardés pour la session après fermeture et réouvertu
 
   // Réouverture : le total d'avant revient (6000 écrits ≈ 4k économisés).
   const ui = await mountBand($, 'desktop')
-  expect(await ui.find({ type: 'Text', text: /~4(\.0)?k/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /~4\.0K/ })).toBeDefined()
   await ui.unmount()
 
   // Et continue de monter : 6000 + 3000 = 9000 gardés pour cette session, les autres intactes.
   await $.turn.complete({ answer: 'ok', reason: 'completed', durationMs: 1, isAborted: false, turnId: 't', usage: { input_tokens: 0, output_tokens: 3000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' } } as never)
   expect((kept.ecoSessions as Record<string, number>)[String(START)]).toBe(9000)
   expect((kept.ecoSessions as Record<string, number>)['123']).toBe(99)
+})
+
+test('skills : en-tête lu, rangés par catégorie, routeurs à part', () => {
+  const multi = parseSkill('---\nname: caveman\ndescription: >\n  Terse voice,\n  fewer tokens.\n---\n# x', 'x')
+  expect(multi).toEqual({ name: 'caveman', description: 'Terse voice, fewer tokens.' })
+  expect(parseSkill('# pas d’en-tête', 'dossier').name).toBe('dossier')
+  expect(categorize({ name: 'roblox-debugging', description: 'Debug Roblox games' })).toBe('Jeux')
+  expect(categorize({ name: 'montage', description: 'Monte une vidéo YouTube' })).toBe('Vidéo')
+  expect(categorize({ name: 'pdf', description: 'Read or create PDF documents' })).toBe('Documents')
+  const index = buildSkillIndex([
+    { name: 'cat-jeux', description: 'routeur' },
+    { name: 'roblox-debugging', description: 'Debug Roblox games' },
+    { name: 'pdf', description: 'PDF documents' },
+  ])
+  expect(index).toContain('router first: cat-jeux')
+  expect(index).toContain('- Jeux: roblox-debugging')
+  expect(index).toContain('- Documents: pdf')
+  expect(index).toContain('Not for a quick question')
+})
+
+test('skills : la liste arrive dans le prompt système et se met à jour quand un skill est ajouté', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kept: Record<string, unknown> = {}
+  let dirs = ['pdf']
+  on('env.get', (_: unknown, e: { name: string }) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/test' : undefined }) as never)
+  on('fs.list', () => ({ value: dirs.map(name => ({ name, kind: 'dir' })) }) as never)
+  on('fs.read', (_: unknown, e: { path: string }) => ({ value: `---\nname: ${e.path.split(/[\\/]/).slice(-2)[0]}\ndescription: ${e.path.includes('roblox') ? 'Debug Roblox games' : 'PDF documents'}\n---` }) as never)
+  on('fs.write', () => undefined)
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => { kept[e.key] = e.value; return { value: undefined } as never })
+  on('session.usage', () => ({ value: USAGE }) as never)
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }) as never)
+  const compose = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] } as never
+  const rules = async () => (await $.prompt.compose(compose)).sections.find((x: { id: string }) => x.id === 'aiblueprint:econome')?.text ?? ''
+
+  await clock.advance(11 * 60_000)
+  expect(await rules()).toContain('- Documents: pdf')
+  dirs = ['pdf', 'roblox-debugging'] // nouveau skill installé
+  await clock.advance(11 * 60_000)
+  expect(await rules()).toContain('- Jeux: roblox-debugging')
 })

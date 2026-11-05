@@ -13,7 +13,7 @@ export type Call = {
 export type Step = { title: string; status: 'pending' | 'in_progress' | 'completed' }
 
 // unfolded = catégories ouvertes (fermées par défaut : on n'y voit que l'action en cours).
-export type View = { hidden: boolean; unfolded: string[]; opened: string[]; settings: boolean }
+export type View = { hidden: boolean; unfolded: string[]; opened: string[]; settings: boolean; cardsClosed?: string[] }
 
 // Un fichier modifié pendant la conversation : lignes ajoutées/retirées, nombre de modifs, dernier aperçu.
 // whole = fichier écrit en entier (Write).

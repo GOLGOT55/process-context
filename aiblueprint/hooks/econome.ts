@@ -31,3 +31,62 @@ export const SAVE_RATIO = 0.4
 
 // Tokens économisés estimés : ce qui a été écrit avec les règles, comparé à la même chose sans elles.
 export const savedTokens = (outTokens: number) => Math.round((outTokens * SAVE_RATIO) / (1 - SAVE_RATIO))
+
+// ---------- Skills : liste rangée par catégorie, refaite quand un skill est ajouté ou retiré ----------
+
+export type SkillInfo = { name: string; description: string }
+
+// Lit le nom et la description dans l'en-tête d'un SKILL.md (description sur une ou plusieurs lignes).
+export function parseSkill(md: string, fallbackName: string): SkillInfo {
+  const head = md.startsWith('---') ? md.slice(3, md.indexOf('\n---', 3)) : ''
+  const name = /^name:\s*(.+)$/m.exec(head)?.[1]?.trim().replace(/^["']|["']$/g, '') || fallbackName
+  const m = /^description:\s*(.*)$/m.exec(head)
+  let description = m?.[1]?.trim() ?? ''
+  if (m && (description === '' || description === '>' || description === '|' || description === '>-')) {
+    const rest = head.slice((m.index ?? 0) + m[0].length).split('\n').slice(1)
+    description = rest.filter((l, i) => /^\s+\S/.test(l) && rest.slice(0, i).every(p => /^\s+\S/.test(p))).map(l => l.trim()).join(' ')
+  }
+  return { name, description: description.replace(/^["']|["']$/g, '') }
+}
+
+// Catégories et mots qui les reconnaissent (nom + description du skill).
+const CATEGORIES: [string, RegExp][] = [
+  ['Jeux', /roblox|luau|minecraft|\bjeux?\b|\bgames?\b|vfx|anim|hud|\bgui\b|mouvement|blender|mesh|\b3d\b|gameplay/g],
+  ['Code', /\bcode|bug|debug|\btests?\b|refactor|review|architect|\bapi\b|deploy|sécur|secur|dette|debt|typescript|python/g],
+  ['Web & design', /\bsites?\b|\bweb\b|landing|design|\bui\b|\bux\b|figma|tailwind|interface|\bcss\b|brand|banner|logo|icon/g],
+  ['Vidéo', /vid[ée]o|montage|premiere|trailer|hyperframes|\bclips?\b|youtube|tiktok/g],
+  ['Voix', /\bvoix\b|voice|\btts\b|doublage|narrat/g],
+  ['Marketing', /marketing|\bseo\b|miniature|thumbnail|concurren|competit|\bprix\b|pricing|growth/g],
+  ['Recherche', /搜|reach|recherche|research|search|scrap|fetch|browser|navigateur|crawl/g],
+  ['Documents', /document|\bpdf\b|docx|\bword\b|excel|xlsx|pptx|slides|présentation|presentation|spreadsheet|sheets?\b/g],
+  ['Apprendre', /apprend|\bcours\b|\bprof\b|learn|teach|exercice|explique/g],
+  ['Organisation', /obsidian|cerveau|\bnotes?\b|routine|planifi|schedul|mémoire|memory|\btri\b|range|brief/g],
+  ['Claude & config', /tokens|terse|concis|claude|\bskills?\b|hook|plugin|\bmods?\b|config|settings|permission|keybind/g],
+]
+
+export function categorize(s: SkillInfo): string {
+  const text = `${s.name} ${s.name} ${s.name} ${s.description}`.toLowerCase() // le nom compte triple
+  let best = 'Autre', score = 0
+  for (const [cat, re] of CATEGORIES) {
+    const n = text.match(re)?.length ?? 0
+    if (n > score) { best = cat; score = n }
+  }
+  return best
+}
+
+// Le texte ajouté au prompt système : la règle d'usage, puis les skills rangés (noms seulement, peu de tokens).
+export function buildSkillIndex(skills: SkillInfo[]): string {
+  if (skills.length === 0) return ''
+  const routers = skills.filter(s => /^(cat-|hub-)/.test(s.name)).map(s => s.name)
+  const byCat = new Map<string, string[]>()
+  for (const s of skills) {
+    if (routers.includes(s.name)) continue
+    const cat = categorize(s)
+    byCat.set(cat, [...(byCat.get(cat) ?? []), s.name])
+  }
+  const lines = [...byCat.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cat, names]) => `- ${cat}: ${names.sort().join(', ')}`)
+  return `# Skills (use them smartly)
+- Use a skill only for real work it matches. Not for a quick question, a one-line edit, or a single command.
+- Pick the 1-2 most specific skills for the request from the list below, by category. Never load one "just in case".
+${routers.length ? `- Category unclear? Use a router first: ${routers.sort().join(', ')}.\n` : ''}${lines.join('\n')}`
+}

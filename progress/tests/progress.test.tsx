@@ -83,20 +83,28 @@ test('chaque étape finie est cochée, une nouvelle demande vide l’historique'
 
 // shortcut: le cas « action en cours visible dans une catégorie fermée » n'est pas testé ici :
 // l'outil de test attend la fin de l'appel avant d'afficher ; à vérifier dans l'app.
-test('catégorie fermée : seule la dernière action finie reste, avec son ✓', async ($, on) => {
+test('catégorie fermée et finie : ✓ sur la catégorie, ses actions rangées', async ($, on) => {
   for (const k in stored) delete stored[k]
   engine(on)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.prompt.submit({ text: 'go', wait: false, origin: { kind: 'composer' } })
   await $.tool.call({ tool: 'Bash', command: 'npm install', description: 'Installe' })
   await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Lance les tests' })
+  await $.tool.call({ tool: 'Skill', skill: 'caveman' })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Button', text: /Commandes/ })).toBeDefined()
-  expect((await ui.find({ type: 'Button', text: /Lance les tests/ }))?.text).toContain('✓')
-  expect(await ui.find({ type: 'Button', text: /Installe/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'cat:Commandes' }))?.text).toContain('✓')
+  expect(await ui.find({ type: 'Button', text: /Lance les tests/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'cat:Skills' })).toBeDefined()
   await ui.press({ key: 'cat:Commandes' })
-  expect(await ui.find({ type: 'Button', text: /Installe/ })).toBeDefined()
+  expect((await ui.find({ type: 'Button', text: /Lance les tests/ }))?.text).toContain('✓')
+
+  // Réduire toute la carte Actions : il ne reste que son titre.
+  await ui.press({ key: 'fold:actions' })
+  expect(await ui.find({ type: 'Button', key: 'cat:Commandes' })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'fold:actions' }))?.text).toContain('▸')
+  await ui.press({ key: 'fold:actions' })
+  expect(await ui.find({ type: 'Button', key: 'cat:Commandes' })).toBeDefined()
   await ui.unmount()
 })
 

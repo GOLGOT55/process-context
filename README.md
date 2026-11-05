@@ -44,7 +44,8 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 ## Progress
 
 - S'ouvre tout seul à droite dès l'ouverture de la session (et au plus tard à la première demande) ; `/progress` le rouvre.
-- **Catégories** : Lecture, Recherche, Web, Modifications, Commandes, Agents, Autre.
+- **Catégories** : Lecture, Recherche, Web, Modifications, Commandes, Agents, Skills (les skills utilisés), Autre. Une catégorie finie prend un ✓.
+- **Cartes réductibles** : clic sur le titre (▾ / ▸) de Plan, Actions, Fichiers touchés ou Garde-fou pour la réduire à son titre.
 - **Temps estimé** qui s'écoule pour chaque action en cours, appris à partir des durées réelles et gardé d'une session à l'autre.
 - **Détail au clic** : fichier et lignes, motif et dossier de recherche, page ou requête web, commande lancée, aperçu des modifications (−/+), fin du résultat.
 - **Temps total** en haut de la carte Actions : le temps restant pour tout pendant le travail, puis le temps passé (✓) une fois fini. Chaque catégorie garde son ✓ et son temps.
@@ -61,7 +62,7 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
   - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`.
 
   Seules les vraies commandes comptent : un texte qui contient juste ces mots (un message, un test) ne déclenche rien. Effacer tout un disque ou le formater est refusé d'office. La carte « Garde-fou » liste chaque commande avec ✓ autorisée, ✕ refusée ou ⛔ bloquée, l'heure, et la commande au clic.
-- **Catégories fermées par défaut** : on n'y voit que l'action en cours, avec son temps qui défile ; une fois finie, elle reste avec son ✓ (sans les secondes) jusqu'à la suivante. Clic sur ▸ pour tout voir, ▾ pour refermer. Œil ◉ pour réduire le panneau.
+- **Catégories fermées par défaut** : on n'y voit que l'action en cours, avec son temps qui défile ; une fois finie, elle se range et la catégorie affiche ✓. Clic sur ▸ pour tout voir, ▾ pour refermer. Œil ◉ pour réduire le panneau.
 
 ### Personnaliser
 
@@ -98,7 +99,8 @@ Actif dès l'installation. À chaque requête, il ajoute au prompt système les 
 Plus fiable qu'un skill : le modèle relit ces règles à chaque message. Environ 435 tokens par requête, mis en cache par l'API.
 
 - **Case ☑ actif / ☐ inactif** dans la carte ÉCONOMIE : un clic active ou coupe le mode (gardé pour toutes les sessions).
-- **Estimation** des tokens économisés sur la session : tokens de réponse écrits avec le mode × 40 % ÷ 60 % (taux moyen, pas une mesure exacte). Gardée pour chaque session, même si tu fermes et rouvres l'app.
+- **Estimation** des tokens économisés sur la session : tokens de réponse écrits avec le mode × 40 % ÷ 60 % (taux moyen, pas une mesure exacte), affichée comme « ~4.1K ». Gardée pour chaque session, même si tu fermes et rouvres l'app.
+- **Skills utilisés intelligemment** : au démarrage, le mod lit tes skills (`~/.claude/skills`), les range par catégorie (Jeux, Code, Web & design, Vidéo…) et donne la liste à Claude avec une règle : un skill seulement pour un vrai travail qui lui correspond, jamais pour une petite action, et le ou les 2 plus précis. Un nouveau skill est ajouté tout seul (vérifié toutes les 10 min). Environ 280 tokens.
 - **Compactage automatique** : quand le contexte dépasse 400 000 tokens, la conversation est compactée seule (comme `/compact`), entre deux tours.
 - ⚙ → Afficher → **Économie** masque ou montre la carte.
 - Les avertissements de sécurité, questions et tout ce qui est écrit dans des fichiers restent en phrases complètes.

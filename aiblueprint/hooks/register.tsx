@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, SessionUsage } from 'claude-code'
 
 import type { Background, Density, GaugeStyle, Limit, NumberStyle, Prefs, Usage } from '../types'
-import { COMPACT_AT, RULES, savedTokens } from './econome.js'
+import { buildSkillIndex, COMPACT_AT, parseSkill, RULES, savedTokens } from './econome.js'
 
 const SESSION_MS = 5 * 3600 * 1000
 const WEEK_MS = 7 * 24 * 3600 * 1000
@@ -135,6 +135,12 @@ function formatResetsIn(ms: number) {
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}j`
+}
+
+// Tokens économisés : « 4.1K », « 1.2M ».
+export function formatEco(count: number) {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
+  return count >= 1000 ? `${(count / 1000).toFixed(1)}K` : `${count}`
 }
 
 function formatTokens(count: number) {
@@ -405,6 +411,29 @@ async function addOut($: EngineInterface, out: number) {
   await $.store.set(ECO_KEY, kept).catch(() => undefined)
 }
 
+// ---------- Skills : liste rangée par catégorie, mise à jour quand un skill arrive ou part ----------
+
+let skillIndex = ''
+let skillScanAt = 0
+const RESCAN_MS = 10 * 60_000 // au plus toutes les 10 min, pour voir les nouveaux skills sans relire à chaque requête
+
+async function scanSkills($: EngineInterface) {
+  skillScanAt = await $.clock.now()
+  const home = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '~'}/.claude`
+  const dir = `${home}/skills`
+  const dirs = (await $.fs.list(dir).catch(() => [])).filter(x => x.kind === 'dir').map(x => x.name).sort()
+  const key = dirs.join(',')
+  const cached = (await $.store.get('skillIndex').catch(() => undefined)) as { key: string; text: string } | undefined
+  if (cached?.key === key) { skillIndex = cached.text; return }
+  const skills = []
+  for (const name of dirs) {
+    const md = await $.fs.read(`${dir}/${name}/SKILL.md`).catch(() => undefined)
+    if (typeof md === 'string') skills.push(parseSkill(md, name))
+  }
+  skillIndex = buildSkillIndex(skills)
+  await $.store.set('skillIndex', { key, text: skillIndex }).catch(() => undefined)
+}
+
 // ---------- Compactage automatique (mode économe) ----------
 
 // Le tour se termine encore quand turn.complete passe : on retente le compactage quelques fois, entre deux tours.
@@ -443,6 +472,7 @@ export const register: Register = (on, rawOptions) => {
     $.ui.status(undefined)
     await loadPrefs($)
     ensureTicking($)
+    void scanSkills($).catch(() => {})
     return started
   })
 
@@ -477,7 +507,11 @@ export const register: Register = (on, rawOptions) => {
     const composed = await next(e)
     if ((await read($, prefsAtom)) === null) await loadPrefs($)
     if (!((await read($, prefsAtom)) ?? base).economy) return composed
-    return { sections: [...composed.sections.filter(x => x.id !== ECONOME_ID), { id: ECONOME_ID, text: RULES, scope: 'session' }] }
+    if ((await $.clock.now()) - skillScanAt > RESCAN_MS) await scanSkills($).catch(() => {})
+    const text = skillIndex ? `${RULES}
+
+${skillIndex}` : RULES
+    return { sections: [...composed.sections.filter(x => x.id !== ECONOME_ID), { id: ECONOME_ID, text, scope: 'session' }] }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -560,7 +594,7 @@ export const register: Register = (on, rawOptions) => {
             {prefs.showCostTime && <Text key="cost" bold color={accent}>{formatCost(usage.cost)}{usage.durationMs !== undefined ? ` · ${formatDuration(usage.durationMs)}` : ''}</Text>}
             {prefs.showEconomy && (
               <Box key="eco" flexDirection="row" gap={1}>
-                <Text><Text dimColor>éco </Text><Text bold color={prefs.economy ? ECO : 'gray'}>~{formatTokens(savedTokens(outTokens))}</Text></Text>
+                <Text><Text dimColor>éco </Text><Text bold color={prefs.economy ? ECO : 'gray'}>~{formatEco(savedTokens(outTokens))}</Text></Text>
                 {ecoBox}
               </Box>
             )}
@@ -642,7 +676,7 @@ export const register: Register = (on, rawOptions) => {
         <Box key="eco" flexDirection="column" gap={0}>
           <Text size="caption" dimColor weight="medium">ÉCONOMIE</Text>
           <Box flexDirection="row" alignItems="center" gap={1}>
-            <Text weight="semibold" color={prefs.economy ? ECO : 'gray'} dimColor={!prefs.economy}>~{formatTokens(savedTokens(outTokens))}</Text>
+            <Text weight="semibold" color={prefs.economy ? ECO : 'gray'} dimColor={!prefs.economy}>~{formatEco(savedTokens(outTokens))}</Text>
             <Text size="footnote" dimColor>tokens</Text>
             {ecoBox}
           </Box>
