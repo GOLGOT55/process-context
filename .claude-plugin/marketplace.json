@@ -1,0 +1,23 @@
+{
+  "name": "process-context",
+  "owner": {
+    "name": "GOLGOT55",
+    "url": "https://github.com/GOLGOT55"
+  },
+  "metadata": {
+    "description": "Deux mods Claude Code : Progress (ce que Claude fait, en direct) et Contexte (contexte et limites d'usage).",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "progress",
+      "source": "./progress",
+      "description": "Panneau à droite : actions de Claude par catégorie, temps estimé, détails et historique."
+    },
+    {
+      "name": "aiblueprint",
+      "source": "./aiblueprint",
+      "description": "Carte Contexte au-dessus de la saisie : contexte utilisé, limites 5 h et semaine."
+    }
+  ]
+}

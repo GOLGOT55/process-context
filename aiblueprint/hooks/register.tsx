@@ -1,0 +1,569 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, SessionUsage } from 'claude-code'
+
+import type { Background, Density, GaugeStyle, Limit, NumberStyle, Prefs, Usage } from '../types'
+
+const SESSION_MS = 5 * 3600 * 1000
+const WEEK_MS = 7 * 24 * 3600 * 1000
+let limitsCache: Promise<string | undefined> | undefined
+// The status line script's cache under $HOME/.claude; undefined when HOME cannot be read.
+const limitsCachePath = ($: EngineInterface) =>
+  (limitsCache ??= $.process
+    .run(['printenv', 'HOME'])
+    .then(({ stdout }) => stdout.trim() ? `${stdout.trim()}/.claude/scripts/statusline/data/usage-limits-cache.json` : undefined)
+    .catch(() => undefined))
+
+// ---------- Look ----------
+
+const ACCENTS = [
+  { value: '#2dd4bf', label: 'Turquoise' },
+  { value: '#60a5fa', label: 'Bleu' },
+  { value: '#f472b6', label: 'Rose' },
+  { value: '#fb923c', label: 'Orange' },
+  { value: '#a3e635', label: 'Citron' },
+  { value: '#e5e7eb', label: 'Blanc' },
+] as const
+
+const GREEN = '#4ade80'
+const YELLOW = '#facc15'
+const ORANGE = '#fb923c'
+const RED = '#f87171'
+const TRACK = '#2a303a'
+const CARD_BG = '#121419'
+const CARD_BORDER = '#232833'
+const DIVIDER = '#3a414d'
+
+const GAUGES: readonly { value: GaugeStyle; label: string }[] = [
+  { value: 'line', label: 'Ligne' },
+  { value: 'segments', label: 'Segments' },
+  { value: 'ring', label: 'Anneau' },
+  { value: 'none', label: 'Aucune' },
+]
+const NUMBERS: readonly { value: NumberStyle; label: string }[] = [
+  { value: 'both', label: 'Tokens + %' },
+  { value: 'tokens', label: 'Tokens' },
+  { value: 'percent', label: '%' },
+]
+const DENSITIES: readonly { value: Density; label: string }[] = [
+  { value: 'compact', label: 'Compact' },
+  { value: 'comfort', label: 'Confort' },
+]
+const BACKGROUNDS: readonly { value: Background; label: string }[] = [
+  { value: 'card', label: 'Carte' },
+  { value: 'none', label: 'Transparent' },
+]
+
+// The show/hide switches of the ⚙ panel, in order.
+const TOGGLES = [
+  { field: 'showContext', label: 'Contexte' },
+  { field: 'showSession', label: 'Coût' },
+  { field: 'showFiveHour', label: '5h' },
+  { field: 'showWeek', label: 'Semaine' },
+  { field: 'showPace', label: 'Rythme' },
+  { field: 'showReset', label: 'Reset' },
+] as const
+
+const usageAtom = atom({ plugin: 'aiblueprint', key: 'usage' } as const, null)
+const settingsOpenAtom = atom({ plugin: 'aiblueprint', key: 'settingsOpen' } as const, false)
+const prefsAtom = atom({ plugin: 'aiblueprint', key: 'prefs' } as const, null)
+const PREFS_STORE_KEY = 'prefs'
+
+type Options = {
+  showSession: boolean
+  showFiveHour: boolean
+  showWeek: boolean
+  showBars: boolean
+  showPace: boolean
+  showReset: boolean
+  sessionLabel: string
+  fiveHourLabel: string
+  weekLabel: string
+  refreshSeconds: number
+}
+
+const DEFAULTS: Options = {
+  showSession: true,
+  showFiveHour: true,
+  showWeek: true,
+  showBars: true,
+  showPace: true,
+  showReset: true,
+  sessionLabel: 'S',
+  fiveHourLabel: '5h',
+  weekLabel: 'Week',
+  refreshSeconds: 30,
+}
+
+let isRunning = false
+let isPending = false
+
+// ---------- Formatting ----------
+
+function statusColor(percent: number, accent: string) {
+  if (percent < 60) return accent
+  if (percent < 75) return YELLOW
+  if (percent < 90) return ORANGE
+  return RED
+}
+
+// Pace > 0: under the window's pace (budget left), < 0: burning faster than time passes.
+function paceColor(pace: number) {
+  if (pace >= 0) return GREEN
+  if (pace > -10) return YELLOW
+  return RED
+}
+
+const formatPace = (pace: number) => `${pace >= 0 ? '+' : ''}${pace.toFixed(0)}%`
+const formatCost = (cost: number) => `$${cost < 10 ? cost.toFixed(2) : cost.toFixed(1)}`
+const clampPct = (percent: number) => Math.max(0, Math.min(100, percent))
+
+// One unit only, the biggest that fits: 6j, 13h, 45m.
+function formatResetsIn(ms: number) {
+  const minutes = Math.max(0, Math.floor(ms / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}j`
+}
+
+function formatTokens(count: number) {
+  if (count >= 1_000_000) return `${+(count / 1_000_000).toFixed(1)}M`
+  return count >= 1000 ? `${Math.round(count / 1000)}k` : `${count}`
+}
+
+const contextTokens = (context: NonNullable<Usage['context']>) =>
+  context.tokens ?? Math.round((context.percent / 100) * context.window)
+
+// ---------- Gauges (SVG for desktop, glyphs for terminal) ----------
+
+function lineSvg(percent: number, color: string, width: number) {
+  const h = 6
+  const filled = Math.max(h, Math.round((clampPct(percent) / 100) * width))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h + 4}" viewBox="0 0 ${width} ${h + 4}"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="${color}" stop-opacity="0.35"/><stop offset="1" stop-color="${color}"/></linearGradient><filter id="f" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="1.6"/></filter></defs><rect y="2" width="${width}" height="${h}" rx="${h / 2}" fill="${TRACK}"/><rect y="2" width="${filled}" height="${h}" rx="${h / 2}" fill="url(#g)"/><circle cx="${filled - h / 2}" cy="${2 + h / 2}" r="${h / 2 + 1}" fill="${color}" opacity="0.55" filter="url(#f)"/><circle cx="${filled - h / 2}" cy="${2 + h / 2}" r="${h / 2 - 0.5}" fill="#ffffff" opacity="0.9"/></svg>`
+}
+
+function segmentsSvg(percent: number, color: string, count: number) {
+  const w = 6, gap = 2.5, h = 10
+  const lit = Math.round((clampPct(percent) / 100) * count)
+  const width = count * w + (count - 1) * gap
+  const rects = Array.from({ length: count }, (_, i) =>
+    `<rect x="${(i * (w + gap)).toFixed(1)}" width="${w}" height="${h}" rx="2" fill="${i < lit ? color : TRACK}" fill-opacity="${i < lit ? (0.45 + (0.55 * (i + 1)) / Math.max(1, lit)).toFixed(2) : 1}"/>`).join('')
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${rects}</svg>`, width, height: h }
+}
+
+function ringSvg(percent: number, color: string, size: number) {
+  const stroke = size >= 20 ? 3 : 2.6
+  const r = size / 2 - stroke
+  const c = 2 * Math.PI * r
+  const dash = (clampPct(percent) / 100) * c
+  const m = size / 2
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${m}" cy="${m}" r="${r}" fill="none" stroke="${TRACK}" stroke-width="${stroke}"/><circle cx="${m}" cy="${m}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash.toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 ${m} ${m})"/></svg>`
+}
+
+function gaugeText(percent: number, style: GaugeStyle) {
+  if (style === 'none') return ''
+  if (style === 'ring') return ['○', '◔', '◑', '◕', '●'][Math.min(4, Math.round(clampPct(percent) / 25))] ?? '○'
+  const n = 8
+  const lit = Math.round((clampPct(percent) / 100) * n)
+  return style === 'segments' ? `${'▰'.repeat(lit)}${'▱'.repeat(n - lit)}` : `${'━'.repeat(lit)}${'─'.repeat(n - lit)}`
+}
+
+// ---------- Usage ----------
+
+// The same windows as the Plan usage limits panel: Session = the 5-hour limit, Week = the 7-day limit.
+function limitOf(usage: SessionUsage, kind: string, windowMs: number, now: number): Limit | undefined {
+  const limit = usage.rateLimits.find(item => item.kind === kind)
+  if (!limit) return undefined
+  const resetsInMs = limit.resetsAt ? new Date(limit.resetsAt).getTime() - now : undefined
+  const elapsedPercent = resetsInMs !== undefined ? ((windowMs - resetsInMs) / windowMs) * 100 : undefined
+  return {
+    percent: limit.percentUsed,
+    pace: elapsedPercent !== undefined ? elapsedPercent - limit.percentUsed : undefined,
+    resetsInMs,
+  }
+}
+
+function contextOf(usage: SessionUsage): Usage['context'] {
+  const { tokens, window, percent } = usage.context
+  const value = percent ?? (tokens !== undefined && window > 0 ? (tokens / window) * 100 : undefined)
+  return value === undefined ? undefined : { percent: value, tokens, window }
+}
+
+function compute(usage: SessionUsage, now: number): Usage {
+  return {
+    cost: usage.cost?.usd ?? 0,
+    context: contextOf(usage),
+    session: limitOf(usage, 'five_hour', SESSION_MS, now),
+    week: limitOf(usage, 'seven_day', WEEK_MS, now),
+  }
+}
+
+// Keeps the terminal status line script on the engine's own readings, so it never calls the usage API.
+async function seedLimitsCache($: EngineInterface, usage: SessionUsage, now: number) {
+  const window = (kind: string) => {
+    const limit = usage.rateLimits.find(item => item.kind === kind)
+    return limit ? { utilization: limit.percentUsed, resets_at: limit.resetsAt ?? null } : null
+  }
+  const sevenDay = window('seven_day')
+  if (!sevenDay) return
+  const path = await limitsCachePath($)
+  if (!path) return
+  await $.fs
+    .write(path, JSON.stringify({ data: { five_hour: window('five_hour'), seven_day: sevenDay }, timestamp: now }, null, 2))
+    .catch(() => undefined)
+}
+
+async function refresh($: EngineInterface): Promise<void> {
+  if (isRunning) {
+    isPending = true
+    return
+  }
+  isRunning = true
+  try {
+    if ((await read($, prefsAtom)) === null) await loadPrefs($)
+    const [usage, now] = await Promise.all([$.session.usage(), $.clock.now()])
+    const next = compute(usage, now)
+    await update($, usageAtom, () => next)
+    await seedLimitsCache($, usage, now)
+  } catch {
+    // keep the last band
+  } finally {
+    isRunning = false
+  }
+  if (isPending) {
+    isPending = false
+    await refresh($)
+  }
+}
+
+// ---------- Prefs ----------
+
+function basePrefs(options: Options): Prefs {
+  return {
+    showContext: true,
+    showSession: options.showSession,
+    showFiveHour: options.showFiveHour,
+    showWeek: options.showWeek,
+    showPace: options.showPace,
+    showReset: options.showReset,
+    gauge: options.showBars ? 'line' : 'none',
+    accent: ACCENTS[0].value,
+    numbers: 'both',
+    density: 'comfort',
+    background: 'card',
+  }
+}
+
+const oneOf = <T extends string>(value: unknown, allowed: readonly { value: T }[], fallback: T): T =>
+  allowed.some(item => item.value === value) ? (value as T) : fallback
+
+// Reads what any earlier version stored, keeping only valid fields.
+function asPrefs(value: unknown, base: Prefs): Prefs {
+  if (!value || typeof value !== 'object') return base
+  const s = value as Record<string, unknown>
+  const bool = (key: keyof Prefs) => (typeof s[key] === 'boolean' ? (s[key] as boolean) : (base[key] as boolean))
+  return {
+    showContext: bool('showContext'),
+    showSession: bool('showSession'),
+    showFiveHour: bool('showFiveHour'),
+    showWeek: bool('showWeek'),
+    showPace: bool('showPace'),
+    showReset: bool('showReset'),
+    gauge: oneOf(s.gauge, GAUGES, typeof s.showBars === 'boolean' && !s.showBars ? 'none' : base.gauge),
+    accent: oneOf(s.accent, ACCENTS, base.accent),
+    numbers: oneOf(s.numbers, NUMBERS, base.numbers),
+    density: oneOf(s.density, DENSITIES, base.density),
+    background: oneOf(s.background, BACKGROUNDS, base.background),
+  }
+}
+
+async function savePrefs($: EngineInterface, change: (prefs: Prefs) => Prefs, base: Prefs) {
+  await update($, prefsAtom, prefs => change(prefs ?? base))
+  const saved = await read($, prefsAtom)
+  await $.store.set(PREFS_STORE_KEY, saved ?? base).catch(() => undefined)
+}
+
+async function safeStoreGet($: EngineInterface): Promise<unknown> {
+  try {
+    return await $.store.get(PREFS_STORE_KEY)
+  } catch {
+    return undefined
+  }
+}
+
+// A reading taken while drawing, before the first refresh landed; a fresh session reads $0 and an empty context.
+async function liveUsage($: EngineInterface): Promise<Usage> {
+  try {
+    const [usage, now] = await Promise.all([$.session.usage(), $.clock.now()])
+    return compute(usage, now)
+  } catch {
+    return { cost: 0 }
+  }
+}
+
+// Set by register: the defaults the saved prefs are merged over.
+let basePrefsForLoad: Prefs | undefined
+
+async function loadPrefs($: EngineInterface) {
+  if (!basePrefsForLoad) return
+  const base = basePrefsForLoad
+  const stored = await $.store.get(PREFS_STORE_KEY).catch(() => undefined)
+  await update($, prefsAtom, prefs => prefs ?? asPrefs(stored, base))
+}
+
+// The timer starts once, from session.start, session.measure or turn.complete (never while drawing;
+// a module loaded after its session started never sees session.start).
+let refreshMs = 30_000
+let isTicking = false
+function ensureTicking($: EngineInterface) {
+  if (isTicking) return
+  try {
+    $.clock.every(refreshMs, () => refresh($))
+    isTicking = true
+  } catch {
+    // try again at the next event
+  }
+  void refresh($)
+}
+
+// ---------- Register ----------
+
+export const register: Register = (on, rawOptions) => {
+  const options: Options = { ...DEFAULTS, ...(rawOptions as Partial<Options>) }
+  refreshMs = Math.max(5, options.refreshSeconds) * 1000
+  const base = basePrefs(options)
+  basePrefsForLoad = base
+  const fiveHourLabel = options.fiveHourLabel
+  const weekLabel = options.weekLabel === 'Week' ? 'Semaine' : options.weekLabel
+
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    $.ui.status(undefined)
+    await loadPrefs($)
+    ensureTicking($)
+    return started
+  })
+
+  on('session.measure', async ($, e, next) => {
+    const measured = await next(e)
+    ensureTicking($)
+    void refresh($)
+    return measured
+  })
+
+  // Mid-turn updates: every finished tool call refreshes the band, no need to wait for the end of the answer.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e)
+    ensureTicking($)
+    void refresh($)
+    return result
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const completed = await next(e)
+    ensureTicking($)
+    void refresh($)
+    return completed
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const [storedUsage, isSettingsOpen, storedPrefs] = await Promise.all([read($, usageAtom), read($, settingsOpenAtom), read($, prefsAtom)])
+    // Same rule as the original 0.7 that draws reliably: nothing until the first reading, and only reads while drawing.
+    if (e.props.hasSurvey) return next(e)
+    // Drawn from the very first frame: before the first timed reading, read the session's usage here (a read only).
+    const usage: Usage = storedUsage ?? (await liveUsage($))
+    const prefs = storedPrefs ?? base
+    const accent = prefs.accent
+    const isCompact = prefs.density === 'compact'
+    const hasLimits = usage.session !== undefined || usage.week !== undefined
+
+    const limits = [
+      { key: 'five-hour', label: fiveHourLabel, limit: prefs.showFiveHour ? usage.session : undefined },
+      { key: 'week', label: weekLabel, limit: prefs.showWeek ? usage.week : undefined },
+    ].filter((item): item is { key: string; label: string; limit: Limit } => item.limit !== undefined)
+    const context = prefs.showContext ? usage.context : undefined
+
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const set = <K extends keyof Prefs>(field: K, value: Prefs[K]) => savePrefs($, prefs => ({ ...prefs, [field]: value }), base)
+    const reset = () => savePrefs($, () => base, base)
+    const toggleSettings = () => update($, settingsOpenAtom, isOpen => !isOpen)
+
+    const gear = (
+      <Button key="gear" label={isSettingsOpen ? '✕' : '⚙'} plain dimColor={!isSettingsOpen} onPress={toggleSettings} />
+    )
+
+    // ----- ⚙ panel: built from Buttons only, so it works the same on every surface -----
+    const chip = (key: string, label: string, isOn: boolean, onPress: () => unknown) => (
+      <Button key={key} label={label} variant={isOn ? 'primary' : 'secondary'} dimColor={!isOn} onPress={onPress} />
+    )
+    const segmented = <T extends string>(field: 'gauge' | 'numbers' | 'density' | 'background', items: readonly { value: T; label: string }[]) =>
+      items.map(item => chip(`${field}-${item.value}`, item.label, prefs[field] === item.value, () => set(field, item.value as never)))
+    const section = (key: string, title: string, children: RenderChildren) => (
+      <Box key={key} flexDirection="row" alignItems="center" gap={1} flexWrap="wrap">
+        <Box width={11}><Text dimColor>{title}</Text></Box>
+        {children}
+      </Box>
+    )
+    const swatches = ACCENTS.map(({ value, label }) => (
+      <Button key={`accent-${label}`} label={`${prefs.accent === value ? '◉' : '●'} ${label}`} variant={prefs.accent === value ? 'primary' : 'secondary'} onPress={() => set('accent', value)}>
+        <Text color={value}>{prefs.accent === value ? '◉' : '●'}</Text>
+        <Text dimColor={prefs.accent !== value}> {label}</Text>
+      </Button>
+    ))
+    const settingsBody = [
+      section('s-show', 'Afficher', TOGGLES.map(({ field, label }) =>
+        chip(`toggle-${field}`, `${prefs[field] ? '✓' : '+'} ${label}`, prefs[field], () => set(field, !prefs[field])))),
+      section('s-gauge', 'Jauge', segmented('gauge', GAUGES)),
+      section('s-accent', 'Couleur', swatches),
+      section('s-numbers', 'Chiffres', segmented('numbers', NUMBERS)),
+      section('s-density', 'Taille', segmented('density', DENSITIES)),
+      section('s-bg', 'Fond', segmented('background', BACKGROUNDS)),
+      !hasLimits && <Text key="hint" dimColor>5h et Semaine : ton compte ne renvoie pas encore de limites, elles apparaîtront dès qu'il y en a.</Text>,
+    ]
+
+    // ----- Terminal -----
+    if (e.surface === 'terminal') {
+      const ctxText = (c: NonNullable<Usage['context']>) =>
+        prefs.numbers === 'percent' ? `${Math.round(c.percent)}%`
+          : prefs.numbers === 'tokens' ? `${formatTokens(contextTokens(c))}/${formatTokens(c.window)}`
+            : `${formatTokens(contextTokens(c))}/${formatTokens(c.window)} ${Math.round(c.percent)}%`
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={3}>
+            {context !== undefined && (
+              <Text key="context">
+                <Text dimColor>ctx </Text>
+                {prefs.gauge !== 'none' && <Text color={statusColor(context.percent, accent)}>{gaugeText(context.percent, prefs.gauge)} </Text>}
+                <Text bold>{ctxText(context)}</Text>
+              </Text>
+            )}
+            {prefs.showSession && <Text key="cost" bold color={accent}>{formatCost(usage.cost)}</Text>}
+            {limits.map(({ key, label, limit }) => (
+              <Text key={key}>
+                <Text dimColor>{label} </Text>
+                {prefs.gauge !== 'none' && <Text color={statusColor(limit.percent, accent)}>{gaugeText(limit.percent, prefs.gauge)} </Text>}
+                <Text bold>{Math.round(limit.percent)}%</Text>
+                {prefs.showPace && limit.pace !== undefined && <Text color={paceColor(limit.pace)}> {formatPace(limit.pace)}</Text>}
+                {prefs.showReset && limit.resetsInMs !== undefined && <Text dimColor> ↻{formatResetsIn(limit.resetsInMs)}</Text>}
+              </Text>
+            ))}
+            {gear}
+          </Box>
+          {isSettingsOpen && (
+            <Box key="settings" flexDirection="column">
+              {settingsBody}
+              <Button key="reset" label="↺ Réinitialiser" plain dimColor onPress={reset} />
+            </Box>
+          )}
+        </Box>
+      )
+    }
+
+    // ----- Desktop / editor / mobile -----
+    const { Svg } = $.ui.resolve(e)
+    const lineWidth = isCompact ? 72 : 104
+    const ringSize = isCompact ? 16 : 22
+    const segCount = isCompact ? 8 : 12
+
+    const gauge = (key: string, percent: number, color: string, alt: string) => {
+      if (prefs.gauge === 'none') return null
+      if (prefs.gauge === 'ring') return <Svg key={key} source={ringSvg(percent, color, ringSize)} alt={alt} width={ringSize} height={ringSize} />
+      if (prefs.gauge === 'segments') {
+        const seg = segmentsSvg(percent, color, segCount)
+        return <Svg key={key} source={seg.svg} alt={alt} width={seg.width} height={seg.height} />
+      }
+      return <Svg key={key} source={lineSvg(percent, color, lineWidth)} alt={alt} width={lineWidth} height={10} />
+    }
+
+    // A metric: small caps label + numbers on one line, gauge under it (or beside it for a ring).
+    const metric = (key: string, title: string, numbers: RenderChildren, gaugeEl: RenderChildren) => {
+      const head = (
+        <Box key="head" flexDirection="column" gap={0}>
+          <Text size="caption" dimColor weight="medium">{title.toUpperCase()}</Text>
+          <Box flexDirection="row" alignItems="center" gap={1}>{numbers}</Box>
+        </Box>
+      )
+      if (prefs.gauge === 'ring') {
+        return <Box key={key} flexDirection="row" alignItems="center" gap="sm">{gaugeEl}{head}</Box>
+      }
+      return (
+        <Box key={key} flexDirection="column" gap={0}>
+          {head}
+          {gaugeEl}
+        </Box>
+      )
+    }
+
+    const ctxColor = context ? statusColor(context.percent, accent) : accent
+    const segments = [
+      context !== undefined && metric(
+        'context',
+        'Contexte',
+        [
+          prefs.numbers !== 'percent' && <Text key="t" weight="semibold">{formatTokens(contextTokens(context))}</Text>,
+          prefs.numbers !== 'percent' && <Text key="w" size="footnote" dimColor>/ {formatTokens(context.window)}</Text>,
+          prefs.numbers !== 'tokens' && <Text key="p" size="footnote" weight="semibold" color={ctxColor}>{Math.round(context.percent)}%</Text>,
+        ],
+        gauge('g-context', context.percent, ctxColor, `Contexte ${Math.round(context.percent)}%`),
+      ),
+      prefs.showSession && (
+        <Box key="cost" flexDirection="column" gap={0}>
+          <Text size="caption" dimColor weight="medium">SESSION</Text>
+          <Text weight="semibold" color={accent}>{formatCost(usage.cost)}</Text>
+        </Box>
+      ),
+      ...limits.map(({ key, label, limit }) => {
+        const color = statusColor(limit.percent, accent)
+        return metric(
+          key,
+          label,
+          [
+            <Text key="p" weight="semibold">{Math.round(limit.percent)}%</Text>,
+            prefs.showPace && limit.pace !== undefined && <Text key="pace" size="footnote" color={paceColor(limit.pace)}>{formatPace(limit.pace)}</Text>,
+            prefs.showReset && limit.resetsInMs !== undefined && <Text key="reset" size="footnote" dimColor>↻ {formatResetsIn(limit.resetsInMs)}</Text>,
+          ],
+          gauge(`g-${key}`, limit.percent, color, `${label} ${Math.round(limit.percent)}%`),
+        )
+      }),
+    ].filter(Boolean)
+
+    const row: RenderChildren[] = []
+    segments.forEach((segment, index) => {
+      if (index > 0) row.push(<Text key={`div-${index}`} color={DIVIDER}>│</Text>)
+      row.push(segment)
+    })
+
+    const isCard = prefs.background === 'card'
+    const card = (key: string, children: RenderChildren, column = false) => (
+      <Box
+        key={key}
+        flexDirection={column ? 'column' : 'row'}
+        alignItems={column ? 'stretch' : 'center'}
+        gap={column ? 'sm' : isCompact ? 'sm' : 'md'}
+        alignSelf="flex-start"
+        // No undefined props: the engine refuses a tree that holds one, and skips the whole band.
+        {...(isCard
+          ? { paddingX: isCompact ? 'sm' : 'md', paddingY: isCompact ? 'xs' : 'sm', borderStyle: 'round', borderColor: CARD_BORDER, backgroundColor: CARD_BG }
+          : {})}
+      >
+        {children}
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column" gap={1}>
+        {card('band', [
+          ...row,
+          segments.length === 0 && <Text key="empty" dimColor>Tout est masqué</Text>,
+          gear,
+        ])}
+        {isSettingsOpen && card('settings', [
+          <Box key="title" flexDirection="row" alignItems="center" justifyContent="space-between" gap={3}>
+            <Text weight="semibold">Personnaliser le bandeau</Text>
+            <Button key="reset" label="↺ Réinitialiser" plain dimColor onPress={reset} />
+          </Box>,
+          ...settingsBody,
+        ], true)}
+      </Box>
+    )
+  })
+}

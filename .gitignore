@@ -1,0 +1,11 @@
+# Types générés par Claude Code au chargement des mods
+.claude-plugin/types/
+*/.claude-plugin/types/
+
+# Système et éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+node_modules/

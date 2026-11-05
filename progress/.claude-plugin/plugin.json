@@ -1,0 +1,13 @@
+{
+  "name": "progress",
+  "version": "1.0.0",
+  "description": "Panneau Progress à droite : ce que Claude fait en direct, par catégorie, avec temps estimé, détails et historique.",
+  "author": {
+    "name": "GOLGOT55",
+    "url": "https://github.com/GOLGOT55"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/GOLGOT55/process-context",
+  "keywords": ["progression", "panneau", "actions", "historique"],
+  "types": "./types/index.d.ts"
+}
