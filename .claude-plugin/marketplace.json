@@ -5,8 +5,8 @@
     "url": "https://github.com/GOLGOT55"
   },
   "metadata": {
-    "description": "Deux mods Claude Code : Progress (ce que Claude fait, en direct) et Contexte (contexte et limites d'usage).",
-    "version": "1.0.0"
+    "description": "Trois mods Claude Code : Progress (ce que Claude fait, en direct), Contexte (contexte et limites d'usage) et Econome (réponses courtes, code minimal, moins de tokens).",
+    "version": "1.1.0"
   },
   "plugins": [
     {
@@ -18,6 +18,11 @@
       "name": "aiblueprint",
       "source": "./aiblueprint",
       "description": "Carte Contexte au-dessus de la saisie : contexte utilisé, limites 5 h et semaine."
+    },
+    {
+      "name": "econome",
+      "source": "./econome",
+      "description": "Règles caveman et ponytail dans le prompt système : réponses courtes, code minimal, moins de tokens."
     }
   ]
 }

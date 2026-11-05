@@ -1,20 +1,21 @@
 # process-context
 
-Deux mods pour **Claude Code** qui montrent ce qui se passe pendant une session :
+Trois mods pour **Claude Code** qui montrent ce qui se passe pendant une session :
 
 | Mod | Où | Ce qu'il affiche |
 | --- | --- | --- |
 | **Progress** (`progress`) | Panneau à droite de la conversation | Les actions de Claude en direct, étape par étape avec ✓, le temps estimé, le détail de chaque action et les fichiers touchés |
 | **Contexte** (`aiblueprint`) | Carte au-dessus de la zone de saisie | Le contexte utilisé, le coût et la durée de la session, les limites 5 h et semaine (alerte à 80 %), le rythme et l'heure de remise à zéro |
+| **Econome** (`econome`) | Invisible, dans le prompt système | Réponses courtes et code minimal (règles caveman et ponytail) à chaque requête, pour économiser des tokens |
 
 ## Installation
 
 ### En une seule commande
 
-Dans un terminal (PowerShell, bash ou zsh), installe les deux mods d'un coup :
+Dans un terminal (PowerShell, bash ou zsh), installe les trois mods d'un coup :
 
 ```bash
-claude plugin install progress --marketplace GOLGOT55/process-context; claude plugin install aiblueprint --marketplace GOLGOT55/process-context
+claude plugin install progress --marketplace GOLGOT55/process-context; claude plugin install aiblueprint --marketplace GOLGOT55/process-context; claude plugin install econome --marketplace GOLGOT55/process-context
 ```
 
 Puis ouvre une nouvelle session Claude Code : les deux mods sont actifs.
@@ -86,6 +87,16 @@ Les réglages sont gardés pour toutes les sessions.
 - Rien à zéro n'est caché : contexte, 5 h et semaine s'affichent toujours, à 0 % s'il n'y a pas encore de valeur.
 - Bouton **⚙** pour choisir ce qui s'affiche, le style de jauge, la couleur, la taille et le fond.
 - Options aussi réglables dans les paramètres de Claude Code (`pluginConfigs`).
+
+## Econome
+
+- Ajoute à **chaque requête**, dans le prompt système, les règles :
+  - **caveman** : réponse d'abord, pas de politesses ni de résumé, phrases courtes, code et erreurs recopiés exactement ;
+  - **ponytail** : le plus petit changement complet, réutiliser l'existant, pas de fonction ni d'option non demandée.
+- Plus fiable qu'un skill : le modèle relit ces règles à chaque message, même s'il oublie de charger un skill.
+- Environ 435 tokens de règles par requête, mis en cache par l'API (presque gratuit après le premier message).
+- `/econome off` le coupe, `/econome on` le remet ; le choix est gardé.
+- Les explications, avertissements de sécurité, questions et tout ce qui est écrit dans des fichiers restent en phrases complètes.
 
 ## Limites
 
