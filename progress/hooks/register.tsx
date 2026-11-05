@@ -261,6 +261,34 @@ export function lineSvg(ratio: number, color: string, width: number) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h + 4}" viewBox="0 0 ${width} ${h + 4}"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="${color}" stop-opacity="0.35"/><stop offset="1" stop-color="${color}"/></linearGradient><filter id="f" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="1.6"/></filter></defs><rect y="2" width="${width}" height="${h}" rx="${h / 2}" fill="${TRACK}"/><rect y="2" width="${filled}" height="${h}" rx="${h / 2}" fill="url(#g)"/><circle cx="${filled - h / 2}" cy="${2 + h / 2}" r="${h / 2 + 1}" fill="${color}" opacity="0.55" filter="url(#f)"/><circle cx="${filled - h / 2}" cy="${2 + h / 2}" r="${h / 2 - 0.5}" fill="#ffffff" opacity="0.9"/></svg>`
 }
 
+// Styles de jauge, comme la carte Contexte.
+export const GAUGES = ['Ligne', 'Segments', 'Anneau', 'Aucune'] as const
+const clamp01 = (r: number) => Math.min(1, Math.max(0, r))
+
+export function segmentsSvg(ratio: number, color: string, count: number) {
+  const w = 6, gap = 2.5, h = 10
+  const lit = Math.round(clamp01(ratio) * count)
+  const width = count * w + (count - 1) * gap
+  const rects = Array.from({ length: count }, (_, i) =>
+    `<rect x="${(i * (w + gap)).toFixed(1)}" width="${w}" height="${h}" rx="2" fill="${i < lit ? color : TRACK}" fill-opacity="${i < lit ? (0.45 + (0.55 * (i + 1)) / Math.max(1, lit)).toFixed(2) : 1}"/>`).join('')
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${rects}</svg>`, width, height: h }
+}
+
+export function ringSvg(ratio: number, color: string, size: number) {
+  const stroke = 2.6
+  const r = size / 2 - stroke
+  const c = 2 * Math.PI * r
+  const m = size / 2
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${m}" cy="${m}" r="${r}" fill="none" stroke="${TRACK}" stroke-width="${stroke}"/><circle cx="${m}" cy="${m}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${(clamp01(ratio) * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 ${m} ${m})"/></svg>`
+}
+
+// Version texte pour le terminal (pas de Svg).
+export function gaugeText(ratio: number, style: string) {
+  if (style === 'Anneau') return ['○', '◔', '◑', '◕', '●'][Math.round(clamp01(ratio) * 4)]!
+  if (style === 'Segments') { const lit = Math.round(clamp01(ratio) * 10); return '▰'.repeat(lit) + '▱'.repeat(10 - lit) }
+  return bar(ratio)
+}
+
 // Le contenu du panneau (fonction du haut du fichier : le moteur l'exige pour lui passer $).
 async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const els = $.ui.resolve(e)
@@ -278,9 +306,23 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const total = running.reduce((s, c) => s + Math.max(0, left(c)), 0)
   const barWidth = Math.max(80, Math.min(220, (e.props.bodyColumns ?? 40) * 5))
 
-  const gauge = (key: string, ratio: number) => isTerminal || !Svg
-    ? <Text key={key} color={ACCENT} dimColor>{bar(ratio)}</Text>
-    : <Svg key={key} source={lineSvg(ratio, ACCENT, barWidth)} alt={`${Math.round(ratio * 100)}%`} width={barWidth} height={10} />
+  const style = p.gauge ?? 'Ligne'
+  const gauge = (key: string, ratio: number) => {
+    const pct = `${Math.round(clamp01(ratio) * 100)}%`
+    if (style === 'Aucune') return false
+    if (isTerminal || !Svg) return <Text key={key} color={ACCENT} dimColor>{gaugeText(ratio, style)}{style === 'Anneau' ? ' ' + pct : ''}</Text>
+    if (style === 'Segments') {
+      const s = segmentsSvg(ratio, ACCENT, Math.max(6, Math.floor((barWidth + 2.5) / 8.5)))
+      return <Svg key={key} source={s.svg} alt={pct} width={s.width} height={s.height} />
+    }
+    if (style === 'Anneau') return (
+      <Box key={key} flexDirection="row" alignItems="center" gap="sm">
+        <Svg source={ringSvg(ratio, ACCENT, 16)} alt={pct} width={16} height={16} />
+        <Text size="footnote" dimColor tabular>{pct}</Text>
+      </Box>
+    )
+    return <Svg key={key} source={lineSvg(ratio, ACCENT, barWidth)} alt={pct} width={barWidth} height={10} />
+  }
 
   const bg = p.background in BACKGROUNDS ? BACKGROUNDS[p.background] : BACKGROUNDS.Carte!
   const card = (key: string, children: RenderChildren) => (
@@ -365,6 +407,7 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
     section('s-color', 'Couleur', swatches('color', p.accent, c => x => ({ ...x, accent: c }))),
     section('s-check', 'Validations ✓', swatches('check', CHECK, c => x => ({ ...x, checkColor: c }), { Vert: GREEN, ...COLORS })),
     section('s-time', 'Temps', swatches('time', TIME, c => x => ({ ...x, timeColor: c }), { Blanc: '#e5e7eb', ...COLORS })),
+    section('s-gauge', 'Jauge', GAUGES.map(name => chip('gauge:' + name, name, style === name, () => pick(x => ({ ...x, gauge: name }))))),
     section('s-bg', 'Fond', Object.keys(BACKGROUNDS).map(name => chip('bg:' + name, name, p.background === name, () => pick(x => ({ ...x, background: name }))))),
     section('s-width', 'Largeur', Object.entries(WIDTHS).map(([name, w]) => chip('width:' + name, name, p.width === w, () => pick(x => ({ ...x, width: w }))))),
     section('s-show', 'Afficher', [toggleChip('showSummary', 'Résumé'), toggleChip('showPlan', 'Plan'), toggleChip('showHistory', 'Historique'), toggleChip('showTimes', 'Temps')]),

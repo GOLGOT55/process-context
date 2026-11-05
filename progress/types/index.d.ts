@@ -15,7 +15,7 @@ export type Step = { title: string; status: 'pending' | 'in_progress' | 'complet
 export type View = { hidden: boolean; folded: string[]; opened: string[]; settings: boolean }
 
 // Réglages de la fenêtre, gardés d'une session à l'autre (copiés dans $.store).
-export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string }
+export type Prefs = { accent: string; width: number; showPlan: boolean; showHistory: boolean; showTimes: boolean; showSummary?: boolean; background: string; checkColor?: string; timeColor?: string; gauge?: string }
 
 declare module 'claude-code' {
   interface PluginState {

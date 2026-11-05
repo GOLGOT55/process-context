@@ -93,3 +93,24 @@ test('sous-actions finies : ✓ sans temps ; total sur Actions ; couleurs des �
   expect((stored.prefs as { timeColor: string }).timeColor).toBe('#e5e7eb')
   await ui.unmount()
 })
+
+test('style de jauge : ligne, segments, anneau ou aucune', async ($, on) => {
+  for (const k in stored) delete stored[k]
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items: [{ content: 'Un', status: 'completed' }, { content: 'Deux', status: 'pending' }] })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'gear' })
+  for (const name of ['Segments', 'Anneau', 'Aucune', 'Ligne']) {
+    await ui.press({ key: 'gauge:' + name })
+    expect((stored.prefs as { gauge: string }).gauge).toBe(name)
+    const svg = await ui.find({ type: 'Svg' })
+    if (name === 'Aucune') expect(svg).toBeUndefined()
+    else expect(svg).toBeDefined()
+  }
+  await ui.unmount()
+  const term = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await term.find({ type: 'Text', text: /━/ })).toBeDefined()
+  await term.unmount()
+})

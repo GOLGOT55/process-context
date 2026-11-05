@@ -59,6 +59,7 @@ Bouton **⚙** (masqué par défaut, **Masquer** pour le refermer) :
 
 - Couleur : bleu, vert, violet, orange, rose, gris
 - Couleur des validations ✓ et couleur des temps
+- Jauge : ligne, segments, anneau ou aucune
 - Fond : carte, noir, ardoise, transparent
 - Largeur : étroite, normale, large
 - Afficher ou non : résumé, plan, historique, temps
