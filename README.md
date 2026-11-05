@@ -51,15 +51,16 @@ Les deux mods se chargent ensuite dans toutes les nouvelles sessions.
 - **Étape par étape** : chaque sous-action a son état, ✓ validée, ● en cours (avec son compte à rebours), ○ en attente, ✕ échec. Une fois validée, seul le ✓ reste, sans les secondes. Bilan en haut (« ✓ 5 validées · ● 1 en cours »).
 - **Historique de la demande** : les actions restent affichées une fois finies ; chaque nouvelle demande repart d'un panneau vide pour ne pas tout accumuler.
 - **Plan** de Claude en haut (○ à faire, ● en cours, ✓ fait).
-- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre le fichier dans un **panneau éditeur** :
+- **Fichiers touchés** : tous les fichiers modifiés pendant la conversation, avec +/− lignes par fichier et au total. ▸ montre un aperçu rapide ; un clic sur le nom ↗ ouvre l'**éditeur** dans le panneau Progress :
   - onglet **Contenu** : le fichier numéroté, les lignes changées par Claude surlignées en vert ;
-  - onglet **Changements** : chaque modification, lignes retirées en rouge (−) et ajoutées en vert (+).
+  - onglet **Changements** : chaque modification, lignes retirées en rouge (−) et ajoutées en vert (+) ;
+  - **↗ Ouvrir à part** le met dans son propre panneau, **← Retour** revient à Progress.
 - **Garde-fou** (activable/désactivable dans ⚙) : avant une commande risquée, une fenêtre demande Autoriser ou Refuser :
   - suppression récursive (`rm -rf`, `Remove-Item -Recurse`, `rmdir /s`) ;
   - suppression dans tes dossiers Jeux ou Cerveau ;
   - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`.
 
-  Effacer tout un disque ou le formater est refusé d'office. La carte « Garde-fou » liste chaque commande avec ✓ autorisée, ✕ refusée ou ⛔ bloquée, l'heure, et la commande au clic.
+  Seules les vraies commandes comptent : un texte qui contient juste ces mots (un message, un test) ne déclenche rien. Effacer tout un disque ou le formater est refusé d'office. La carte « Garde-fou » liste chaque commande avec ✓ autorisée, ✕ refusée ou ⛔ bloquée, l'heure, et la commande au clic.
 - Flèches ▸/▾ pour replier, œil ◉ pour réduire le panneau.
 
 ### Personnaliser

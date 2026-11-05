@@ -113,14 +113,18 @@ export function describe(tool: string, a: Args): Pick<Call, 'category' | 'label'
 
 // ----- Garde-fou : commandes risquées -----
 // block = refusée d'office (irréparable) ; sinon on demande confirmation.
+// Seulement là où une commande commence (début de ligne, après ; && || | ( then do sudo…),
+// pour ne pas réagir à du texte qui contient juste « rm -rf » (un test, un message, un fichier écrit).
+const at = (src: string, flags = 'im') => new RegExp(String.raw`(?:^|[;&|(){}]|\b(?:then|do|else|sudo|xargs|exec))\s*` + src, flags)
+const DELETE = String.raw`(?:rm|del|rmdir|rd|Remove-Item|ri)\b`
 const GUARD_RULES: { re: RegExp; reason: string; block?: true }[] = [
-  { re: /\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+(\/|~|\/\*|[a-z]:[\\/]?)\s*($|[;&|])/i, reason: 'Efface tout un disque ou le dossier personnel', block: true },
-  { re: /\b(format(-volume)?\s+[a-z]:|diskpart|mkfs(\.\w+)?\s)/i, reason: 'Formate un disque', block: true },
-  { re: /(Dev & Jeux|\bJEUX\b|Cerveau)[^\n]*\b(rm|del|rmdir|rd|Remove-Item|ri)\b|\b(rm|del|rmdir|rd|Remove-Item|ri)\b[^\n]*(Dev & Jeux|\bJEUX\b|Cerveau)/i, reason: 'Supprime dans tes dossiers Jeux ou Cerveau' },
-  { re: /\brm\s+-[a-z]*r|\bRemove-Item\b[^\n]*-Recurse|\brmdir\s+\/s|\b(rd|del)\s+\/s/i, reason: 'Suppression récursive de dossier' },
-  { re: /\bgit\s+push\b[^\n]*(\s--force(-with-lease)?\b|\s-f\b)/i, reason: 'Push forcé : peut écraser l’historique sur GitHub' },
-  { re: /\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)/i, reason: 'Efface des changements non enregistrés' },
-  { re: /\bgit\s+branch\s+-D\b/, reason: 'Supprime une branche sans vérifier' },
+  { re: at(String.raw`rm\s+-[a-z]*r[a-z]*\s+(?:\/|~|\/\*|[a-z]:[\\/]?)\s*(?:$|[;&|])`), reason: 'Efface tout un disque ou le dossier personnel', block: true },
+  { re: at(String.raw`(?:format(?:-volume)?\s+[a-z]:|diskpart\b|mkfs(?:\.\w+)?\s)`), reason: 'Formate un disque', block: true },
+  { re: at(DELETE + String.raw`[^\n;&|]*(?:Dev & Jeux|JEUX|Cerveau)`), reason: 'Supprime dans tes dossiers Jeux ou Cerveau' },
+  { re: at(String.raw`(?:rm\s+-[a-z]*r|Remove-Item\b[^\n;&|]*-Recurse|rmdir\s+\/s|(?:rd|del)\s+\/s)`), reason: 'Suppression récursive de dossier' },
+  { re: at(String.raw`git\s+push\b[^\n;&|]*\s(?:--force(?:-with-lease)?|-f)\b`), reason: 'Push forcé : peut écraser l’historique sur GitHub' },
+  { re: at(String.raw`git\s+(?:reset\s+--hard|clean\s+-[a-z]*f)`), reason: 'Efface des changements non enregistrés' },
+  { re: at(String.raw`git\s+branch\s+-D\b`, 'm'), reason: 'Supprime une branche sans vérifier' },
 ]
 
 export function guardCheck(command: string): { reason: string; block?: true } | undefined {
@@ -146,12 +150,19 @@ export function changedLines(content: string, changes: FileChange[]): Set<number
   return out
 }
 
+// Clic sur un fichier : l'éditeur s'affiche dans le panneau Progress (toujours visible).
 async function openFile($: EngineInterface, path: string) {
-  await update($, fileView, v => ({ path, tab: v.path === path ? v.tab : 'code' }))
-  await $.ui.open({ id: EDITOR, title: base(path), columns: 90 })
+  await update($, fileView, v => ({ path, tab: v.path === path ? v.tab : 'code', inline: true }))
 }
 
-async function editorBody($: EngineInterface, e: RenderInput<'Pane'>) {
+// « Ouvrir à part » : le même éditeur dans son propre panneau, mis au premier plan.
+async function popOutFile($: EngineInterface, path: string) {
+  const { isPlaced } = await $.ui.open({ id: EDITOR, title: base(path), columns: 90, focus: true })
+  if (isPlaced) await update($, fileView, v => ({ ...v, inline: false }))
+  else $.ui.toast('Le panneau à part ne peut pas s’ouvrir ici : l’éditeur reste dans Progress.')
+}
+
+async function editorBody($: EngineInterface, e: RenderInput<'Pane'>, isInline = false) {
   const { Box, Text, Button } = $.ui.resolve(e)
   const [fv, list, p] = [await read($, fileView), await read($, files), await read($, prefs)]
   const f = list.find(x => x.path === fv.path)
@@ -170,7 +181,11 @@ async function editorBody($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text size="footnote" tabular><Text color={CHECK}>+{f.added}</Text> <Text color={RED}>−{f.removed}</Text> <Text dimColor>· {f.edits} modif{f.edits > 1 ? 's' : ''}</Text></Text>
       </Box>
       <Text size="footnote" dimColor mono wrap="truncate-middle">{f.path}</Text>
-      <Box flexDirection="row" gap="sm">{tab('code', 'Contenu')}{tab('diff', 'Changements')}</Box>
+      <Box flexDirection="row" gap="sm" alignItems="center" flexWrap="wrap">
+        {tab('code', 'Contenu')}{tab('diff', 'Changements')}
+        {isInline && <Button key="pop" label="↗ Ouvrir à part" plain dimColor onPress={() => void popOutFile($, f.path).catch(() => {})} />}
+        {isInline && <Button key="back" label="← Retour" plain dimColor onPress={() => void update($, fileView, v => ({ ...v, inline: false }))} />}
+      </Box>
     </Box>
   )
   const codeLine = (key: string, num: string, text: string, bg?: string, sign = ' ') => (
@@ -336,10 +351,10 @@ export const register: Register = on => {
     if (e.tool === 'mcp__ccd_turn__wrap_up') await update($, plan, steps => steps.map(s => ({ ...s, status: 'completed' as const })))
     if (HIDDEN_TOOLS.test(e.tool)) return next(e)
 
-    // Garde-fou : avant de lancer une commande risquée, confirmation (ou refus d'office).
+    // Garde-fou : avant une commande risquée, fenêtre Autoriser / Refuser (ou refus d'office).
     const command = e.tool === 'Bash' || e.tool === 'PowerShell' ? str(a, 'command') : ''
-    const risk = command ? guardCheck(command) : undefined
-    if (risk && (await read($, prefs)).guard !== false) {
+    const risk = command && (await read($, prefs)).guard !== false ? guardCheck(command) : undefined
+    if (risk) {
       let decision: GuardEntry['decision'] = 'bloquée'
       if (!risk.block) {
         const answer = await $.ui.ask(`Garde-fou : ${risk.reason}. Lancer quand même « ${clip(command.split('\n')[0] ?? '', 80)} » ?`, { header: 'Garde-fou', options: ['Autoriser', 'Refuser'] })
@@ -445,6 +460,9 @@ async function body($: EngineInterface, e: RenderInput<'Pane'>) {
   const els = $.ui.resolve(e)
   const { Box, Text, Button } = els
   const Svg = 'Svg' in els ? els.Svg : undefined // pas de Svg dans le terminal
+  // Un fichier ouvert : l'éditeur prend la place du contenu, avec « ← Retour ».
+  const opened = await read($, fileView)
+  if (opened.inline && opened.path) return editorBody($, e, true)
   const [list, steps, v, t, p] = [await read($, calls), await read($, plan), await read($, view), await read($, now), await read($, prefs)]
   const ACCENT = p.accent
   const CHECK = p.checkColor ?? GREEN // couleur des ✓ validées

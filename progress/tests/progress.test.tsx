@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { guardCheck } from '../hooks/register.js'
+
 const PANE = {
   plugin: 'progress',
   component: 'Pane',
@@ -175,6 +177,19 @@ test('garde-fou : confirmation, refus, blocage direct, carte et interrupteur', a
   expect(asked.length).toBe(2)
 })
 
+test('garde-fou : seulement là où une commande commence, pas dans du texte', async () => {
+  expect(guardCheck('rm -rf ./build')).toBeDefined()
+  expect(guardCheck('cd x && rm -rf ./build')).toBeDefined()
+  expect(guardCheck("git status; git push --force origin main")).toBeDefined()
+  expect(guardCheck('Remove-Item "C:\\Users\\ruben\\Cerveau\\note.md"')).toBeDefined()
+  expect(guardCheck('rm -rf /')?.block).toBe(true)
+  // Du texte qui contient juste les mots : pas d'alerte.
+  expect(guardCheck(`echo "ne lance pas rm -rf ./build"`)).toBeUndefined()
+  expect(guardCheck(`cat >> test.tsx <<'X'\n  await call({ command: 'rm -rf ./build' })\nX`)).toBeUndefined()
+  expect(guardCheck('git commit -m "pas de git push --force ici"')).toBeUndefined()
+  expect(guardCheck('ls -la')).toBeUndefined()
+})
+
 test('éditeur : clic sur un fichier touché, contenu numéroté avec lignes changées, onglet Changements', async ($, on) => {
   for (const k in stored) delete stored[k]
   opened.length = 0
@@ -183,16 +198,25 @@ test('éditeur : clic sur un fichier touché, contenu numéroté avec lignes cha
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.tool.call({ tool: 'Edit', file_path: '/src/app.ts', old_string: 'const b = 0', new_string: 'const b = 2' })
 
+  // Clic sur le nom : l'éditeur s'affiche dans Progress.
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'f:/src/app.ts' })
+  expect(await ui.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
+  await ui.press({ key: 'tab:diff' })
+  expect(await ui.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
+  // Ouvrir à part : un second panneau, qui montre le même fichier.
+  await ui.press({ key: 'pop' })
   expect(opened.some(o => (o as { id: string }).id === 'progress-file')).toBe(true)
   await ui.unmount()
 
   const ed = await $.ui.mount({ ...PANE, requestId: 'progress-file', props: { ...PANE.props, title: 'app.ts', bodyColumns: 90 }, surface: 'desktop' })
-  expect(await ed.find({ type: 'Text', text: /^1\s+const a = 1$/ })).toBeDefined()
-  expect(await ed.find({ type: 'Text', text: /^2 \+ const b = 2$/ })).toBeDefined()
-  await ed.press({ key: 'tab:diff' })
   expect(await ed.find({ type: 'Text', text: /MODIFICATION 1/ })).toBeDefined()
-  expect(await ed.find({ type: 'Text', text: /− const b = 0/ })).toBeDefined()
   await ed.unmount()
+
+  // Progress revient à sa vue normale.
+  const back = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await back.find({ type: 'Text', text: /Fichiers touchés/i })).toBeDefined()
+  await back.unmount()
 })
