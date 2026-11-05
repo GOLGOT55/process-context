@@ -103,6 +103,8 @@ Plus fiable qu'un skill : le modèle relit ces règles à chaque message. Enviro
 - **Estimation** des tokens économisés sur la session : tokens de réponse écrits avec le mode × 40 % ÷ 60 % (taux moyen, pas une mesure exacte), affichée comme « ~4.1K ». Gardée pour chaque session, même si tu fermes et rouvres l'app.
 - **Skills utilisés intelligemment** : au démarrage, le mod lit tes skills (`~/.claude/skills`), les range par catégorie (Jeux, Code, Web & design, Vidéo…) et donne la liste à Claude avec une règle : un skill seulement pour un vrai travail qui lui correspond, jamais pour une petite action, et le ou les 2 plus précis. Un nouveau skill est ajouté tout seul (vérifié toutes les 10 min). Environ 280 tokens.
 - **Compactage automatique** : quand le contexte dépasse 400 000 tokens, la conversation est compactée seule (comme `/compact`), entre deux tours.
+  Pour que Claude Code le fasse lui-même, même quand l'app redémarre le processus entre deux messages, ajoute dans `~/.claude/settings.json` :
+  `"env": { "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40" }` (40 % d'une fenêtre de 1M = 400k). Actif à partir du message suivant.
 - ⚙ → Afficher → **Économie** masque ou montre la carte.
 - Les avertissements de sécurité, questions et tout ce qui est écrit dans des fichiers restent en phrases complètes.
 
