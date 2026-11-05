@@ -214,7 +214,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'progress', description: 'Ouvrir le panneau Progress à droite' })
-    void ensureOpen($).catch(() => {})
+    // Pas d'ouverture ici : l'écran n'est pas encore attaché (message d'erreur gris). Le panneau s'ouvre à la première demande.
     return next(e)
   })
 
